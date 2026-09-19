@@ -1,0 +1,10 @@
+{
+  "id": "composite",
+  "name": "Composite",
+  "version": "1.0.0",
+  "minAppVersion": "0.1.234",
+  "description": "Combine multiple sounds (e.g. a doorknob turn + creak + bell) into one new baked sound, editable like any other.",
+  "author": "Noctívago",
+  "main": "main.js",
+  "styles": "styles.css"
+}
