@@ -1,0 +1,10 @@
+# Builds, tests and checks the manifest on every pull request and push to
+# main, with the same rules as a release.
+name: Check
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  check:
+    uses: Venari-Hunt/noctivago-plugins/.github/workflows/plugin-ci.yml@main
