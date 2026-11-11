@@ -16,8 +16,31 @@
 // still bake in; only its Remix loop points are overridden by the timeline's
 // own trim.
 
-import { LANE_H, MIN_PX_PER_SEC, MAX_PX_PER_SEC, MIN_CLIP_SEC, snapMs, fmtSec } from '../domain/timeline.js'
+//
+// Desktop 2.0 (step 15) moved it onto the approved mock: one timeline card
+// (a lane header beside each lane), a "Selected clip" card, and the actions
+// on one centered row. Bake is now "Make sound", "+ Add sound" is "Add lane".
+
+import {
+  LANE_H,
+  MIN_PX_PER_SEC,
+  MAX_PX_PER_SEC,
+  MIN_CLIP_SEC,
+  VOLUME_MAX,
+  snapMs,
+  fmtSec,
+  rulerLabel,
+  rulerStep,
+  parseNum,
+  volumeFill
+} from '../domain/timeline.js'
 import { escapeHtml } from '../domain/html.js'
+import { icon } from './icons.js'
+
+// The mock stacks each lane header above its lane below this window width.
+const STACKED_MQ = '(max-width: 900px)'
+const HEAD_W = 280 + 8 // header column + grid gap
+const TL_PAD = 24 // the timeline card's padding, both sides
 
 export default class CompositePlugin {
   constructor(app) {
@@ -73,47 +96,36 @@ export default class CompositePlugin {
   mount(container) {
     container.innerHTML = `
       <div class="composite-tab">
-        <h2>Composite sound</h2>
-        <p class="composite-hint">Weld two or more sounds into one new baked sound. Drag each clip to position it, drag its edges to trim, set its volume on the left. Filters and EQ stay in the Remix tab - remix a member first, or remix the finished composite after.</p>
+        <p class="cp-hint">Weld sounds into one new sound. Drag a clip to place it, drag its edges to trim.</p>
 
-        <div class="composite-top">
-          <label><span>Edit existing</span>
-            <select id="composite-existing"><option value="">New composite…</option></select>
+        <div class="cp-tools">
+          <label class="cp-fl cp-grow">Name
+            <input id="composite-name" class="cp-field" type="text" placeholder="Door effect" />
           </label>
-          <label><span>Name</span>
-            <input id="composite-name" type="text" placeholder="Door effect" />
+          <label class="cp-fl cp-grow">Editing
+            <select id="composite-existing" class="cp-field"><option value="">New composite</option></select>
           </label>
         </div>
 
-        <div class="composite-editor">
-          <div class="composite-sidecol" id="composite-sidecol"></div>
-          <div class="composite-scroll" id="composite-scroll">
-            <div class="composite-ruler" id="composite-ruler"></div>
-            <div class="composite-lanes" id="composite-lanes"></div>
-          </div>
+        <div class="cp-tl" id="composite-tl"></div>
+
+        <div class="cp-card cp-clipedit" id="composite-selected" hidden></div>
+
+        <div class="cp-tools">
+          <button id="composite-add-member" class="cp-b" type="button">${icon('plus')}Add lane</button>
+          <button id="composite-preview" class="cp-b" type="button" aria-pressed="false">${icon('play')}<span>Preview</span></button>
+          <span class="cp-num" id="composite-total"></span>
+          <button id="composite-bake" class="cp-b cp-pri" type="button">${icon('check')}Make sound</button>
         </div>
-
-        <div class="composite-toolbar">
-          <button id="composite-add-member" class="btn btn-icon-text" type="button">+ Add sound</button>
-          <button id="composite-preview" class="btn btn-icon-text" type="button">▶ Preview</button>
-          <span class="composite-total" id="composite-total"></span>
-        </div>
-
-        <div class="composite-selected" id="composite-selected"></div>
-
-        <button id="composite-bake" class="btn btn-primary btn-icon-text" type="button">Bake</button>
-        <p id="composite-status" class="composite-status"></p>
+        <p id="composite-status" class="cp-hint" aria-live="polite"></p>
       </div>
     `
 
     this.els = {
       existing: container.querySelector('#composite-existing'),
       name: container.querySelector('#composite-name'),
-      editor: container.querySelector('.composite-editor'),
-      sidecol: container.querySelector('#composite-sidecol'),
-      scroll: container.querySelector('#composite-scroll'),
-      ruler: container.querySelector('#composite-ruler'),
-      lanes: container.querySelector('#composite-lanes'),
+      tl: container.querySelector('#composite-tl'),
+      ruler: null, // rebuilt with the timeline
       addMember: container.querySelector('#composite-add-member'),
       preview: container.querySelector('#composite-preview'),
       total: container.querySelector('#composite-total'),
@@ -131,8 +143,8 @@ export default class CompositePlugin {
     this.els.preview.addEventListener('click', () => this.togglePreview())
     this.els.bake.addEventListener('click', () => this.bake())
 
-    // Pointer drags on clips/handles are delegated from the lanes container.
-    this.els.lanes.addEventListener('pointerdown', (e) => this.onPointerDown(e))
+    // Pointer drags on clips/handles are delegated from the timeline card.
+    this.els.tl.addEventListener('pointerdown', (e) => this.onPointerDown(e))
     window.addEventListener('pointermove', this._onMove = (e) => this.onPointerMove(e))
     window.addEventListener('pointerup', this._onUp = (e) => this.onPointerUp(e))
     // Debounced: a window-border drag fires `resize` continuously, and each
@@ -164,8 +176,8 @@ export default class CompositePlugin {
     const composites = this.library.filter((s) => s.compositeSource)
     const prev = this.els.existing.value
     this.els.existing.innerHTML =
-      '<option value="">New composite…</option>' +
-      composites.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
+      '<option value="">New composite</option>' +
+      composites.map((c) => `<option value="${c.id}">Edit existing: ${escapeHtml(c.name)}</option>`).join('')
     if (composites.some((c) => c.id === prev)) this.els.existing.value = prev
     this.render()
     // Learn any missing durations, then redraw once they're in.
@@ -244,15 +256,15 @@ export default class CompositePlugin {
   }
 
   render() {
-    if (!this.els.lanes) return
+    if (!this.els.tl) return
     const totalSec = this.timelineSec()
-    const availW = Math.max(240, (this.els.scroll?.clientWidth || 480) - 8)
+    const stacked = window.matchMedia?.(STACKED_MQ).matches
+    const tlW = this.els.tl.clientWidth || 720
+    const availW = Math.max(240, tlW - TL_PAD - (stacked ? 0 : HEAD_W))
     this.pxPerSec = Math.min(MAX_PX_PER_SEC, Math.max(MIN_PX_PER_SEC, availW / totalSec))
     const trackW = Math.round(totalSec * this.pxPerSec)
 
-    this.renderRuler(totalSec, trackW)
-    this.renderSidecol()
-    this.renderLanes(trackW)
+    this.renderTimeline(totalSec, trackW)
     this.renderSelected()
 
     this.els.total.textContent = this.members.some((m) => m.soundId)
@@ -262,40 +274,48 @@ export default class CompositePlugin {
   }
 
   renderRuler(totalSec, trackW) {
-    const step = totalSec < 6 ? 0.5 : totalSec < 20 ? 1 : totalSec < 90 ? 5 : 15
+    if (!this.els.ruler) return
+    const step = rulerStep(totalSec)
     let html = ''
     for (let t = 0; t <= totalSec + 1e-6; t += step) {
       const left = Math.round(t * this.pxPerSec)
-      html += `<span class="composite-tick" style="left:${left}px">${fmtSec(t)}</span>`
+      // The last labels hang left of their tick so they never run off the card.
+      const end = left > trackW - 48 ? ' end' : ''
+      html += `<span class="cp-tick${end}" style="left:${left}px">${rulerLabel(t)}</span>`
     }
-    this.els.ruler.style.width = `${trackW}px`
+    this.els.tl.style.setProperty('--track-w', `${trackW}px`)
     this.els.ruler.innerHTML = html
   }
 
-  renderSidecol() {
+  // The mock's timeline card: a ruler row, then a header (sound, volume,
+  // remove) beside each lane. Headers and lanes share one grid so a lane's
+  // header stays on its row, and stacks above it in a narrow window.
+  renderTimeline(totalSec, trackW) {
     const editable = this.library.filter((s) => s.status === 'ok' && s.id !== this.editingId)
-    // A spacer matching the ruler height keeps the side boxes aligned with
-    // their lanes across the scroll container.
-    let html = `<div class="composite-side-spacer"></div>`
+    let html = `<div class="cp-tl-corner"></div><div class="cp-tlr" id="composite-ruler"></div>`
     this.members.forEach((m, i) => {
       const opts =
-        `<option value="">Select a sound…</option>` +
+        `<option value="">Pick a sound</option>` +
         editable
           .map((s) => `<option value="${s.id}" ${s.id === m.soundId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`)
           .join('')
+      const sel = i === this.selectedIndex ? ' selected' : ''
       html += `
-        <div class="composite-side ${i === this.selectedIndex ? 'selected' : ''}" data-index="${i}" style="height:${LANE_H}px">
-          <select class="composite-side-sound">${opts}</select>
-          <div class="composite-side-row">
-            <input class="composite-side-volume" type="range" min="0" max="2" step="0.01" value="${m.volume}" title="Volume" />
-            <span class="composite-side-vol-val">${Math.round(m.volume * 100)}%</span>
-            <button class="composite-side-remove btn btn-svg-icon" type="button" title="Remove">✕</button>
+        <div class="cp-tlh composite-side${sel}" data-index="${i}">
+          <select class="cp-field composite-side-sound" aria-label="Sound for this lane">${opts}</select>
+          <div class="cp-tlv">
+            <input class="cp-fader composite-side-volume" type="range" min="0" max="${VOLUME_MAX}" step="0.01" value="${m.volume}" style="--p:${volumeFill(m.volume)}" aria-label="Lane volume" />
+            <span class="cp-num composite-side-vol-val">${Math.round(m.volume * 100)}%</span>
+            <button class="cp-i cp-tb composite-side-remove" type="button" aria-label="Remove lane" title="Remove lane">${icon('x')}</button>
           </div>
-        </div>`
+        </div>
+        <div class="cp-tll composite-lane${sel}" data-index="${i}" style="height:${LANE_H}px">${this.clipHtml(m, i)}</div>`
     })
-    this.els.sidecol.innerHTML = html
+    this.els.tl.innerHTML = html
+    this.els.ruler = this.els.tl.querySelector('#composite-ruler')
+    this.renderRuler(totalSec, trackW)
 
-    this.els.sidecol.querySelectorAll('.composite-side').forEach((box) => {
+    this.els.tl.querySelectorAll('.composite-side').forEach((box) => {
       const i = Number(box.dataset.index)
       box.addEventListener('mousedown', (e) => {
         // Don't re-render on mousedown over an interactive control - doing so
@@ -319,47 +339,54 @@ export default class CompositePlugin {
       vol.addEventListener('focus', () => this.selectMember(i))
       vol.addEventListener('input', (e) => {
         this.members[i].volume = Number(e.target.value)
-        box.querySelector('.composite-side-vol-val').textContent = `${Math.round(this.members[i].volume * 100)}%`
+        this.syncVolumeUi(i)
         this.applyPreviewVolume(i)
       })
-      box.querySelector('.composite-side-remove').addEventListener('click', () => {
-        this.members.splice(i, 1)
-        if (this.selectedIndex >= this.members.length) this.selectedIndex = this.members.length - 1
-        this.stopPreview()
-        this.render()
-      })
+      box.querySelector('.composite-side-remove').addEventListener('click', () => this.removeMember(i))
     })
-  }
-
-  renderLanes(trackW) {
-    this.els.lanes.style.width = `${trackW}px`
-    this.els.lanes.innerHTML = this.members
-      .map((m, i) => {
-        const inner = this.clipHtml(m, i)
-        return `<div class="composite-lane" data-index="${i}" style="height:${LANE_H}px">${inner}</div>`
-      })
-      .join('')
 
     this.members.forEach((m, i) => {
       if (!m.soundId) return
-      const canvas = this.els.lanes.querySelector(`.composite-lane[data-index="${i}"] canvas`)
+      const canvas = this.els.tl.querySelector(`.composite-lane[data-index="${i}"] canvas`)
       if (canvas) this.drawWave(canvas, m)
     })
   }
 
+  // Lane fader, its % label and the Selected clip's Volume field all show
+  // the same number; update them in place (no re-render mid-drag).
+  syncVolumeUi(i) {
+    const m = this.members[i]
+    const box = this.els.tl.querySelector(`.composite-side[data-index="${i}"]`)
+    if (box) {
+      const fader = box.querySelector('.composite-side-volume')
+      fader.value = m.volume
+      fader.style.setProperty('--p', volumeFill(m.volume))
+      box.querySelector('.composite-side-vol-val').textContent = `${Math.round(m.volume * 100)}%`
+    }
+    const field = this.els.selected.querySelector('#csel-volume')
+    if (field && i === this.selectedIndex) field.value = `${Math.round(m.volume * 100)}%`
+  }
+
+  removeMember(i) {
+    this.members.splice(i, 1)
+    if (this.selectedIndex >= this.members.length) this.selectedIndex = this.members.length - 1
+    this.stopPreview()
+    this.render()
+  }
+
   clipHtml(m, i) {
     if (!m.soundId) {
-      return `<div class="composite-clip-empty">pick a sound on the left</div>`
+      return `<div class="cp-lane0">Pick a sound on the left to place it</div>`
     }
     const left = Math.round((m.delayMs / 1000) * this.pxPerSec)
     const width = Math.max(10, Math.round(this.memberLen(m) * this.pxPerSec))
     const entry = this.library.find((s) => s.id === m.soundId)
     const name = entry ? entry.name : '(missing)'
     return `
-      <div class="composite-clip ${i === this.selectedIndex ? 'selected' : ''}" data-index="${i}"
+      <div class="cp-clip composite-clip ${i === this.selectedIndex ? 'selected' : ''}" data-index="${i}"
            style="left:${left}px;width:${width}px">
         <canvas></canvas>
-        <span class="composite-clip-label">${escapeHtml(name)}</span>
+        <b>${escapeHtml(name)}</b>
         <div class="composite-clip-handle left" data-role="in"></div>
         <div class="composite-clip-handle right" data-role="out"></div>
       </div>`
@@ -367,7 +394,7 @@ export default class CompositePlugin {
 
   async drawWave(canvas, m) {
     const cssW = canvas.clientWidth || Math.round(this.memberLen(m) * this.pxPerSec)
-    const cssH = canvas.clientHeight || LANE_H - 20
+    const cssH = canvas.clientHeight || LANE_H - 16 - 28
     if (cssW < 2) return
     const dpr = window.devicePixelRatio || 1
     canvas.width = Math.round(cssW * dpr)
@@ -390,7 +417,7 @@ export default class CompositePlugin {
     // The canvas may have been recycled by a re-render while we awaited.
     if (!canvas.isConnected) return
     const mid = cssH / 2
-    ctx.strokeStyle = 'rgba(180, 200, 255, 0.75)'
+    ctx.strokeStyle = '#a18a45' // the mock's clip waveform, on the --tint clip
     ctx.beginPath()
     if (peaks && peaks.length) {
       const n = peaks.length
@@ -407,15 +434,12 @@ export default class CompositePlugin {
   }
 
   // Cheap selection change - just move the highlight and refresh the
-  // "Selected clip" fields, without rebuilding the sidecol/lanes DOM (which
-  // would kill an in-progress <select>/slider interaction and refetch every
+  // "Selected clip" card, without rebuilding the timeline DOM (which would
+  // kill an in-progress <select>/slider interaction and refetch every
   // waveform).
   selectMember(i) {
     this.selectedIndex = i
-    this.els.sidecol.querySelectorAll('.composite-side').forEach((c) =>
-      c.classList.toggle('selected', Number(c.dataset.index) === i)
-    )
-    this.els.lanes.querySelectorAll('.composite-clip').forEach((c) =>
+    this.els.tl.querySelectorAll('.composite-side, .composite-lane, .composite-clip').forEach((c) =>
       c.classList.toggle('selected', Number(c.dataset.index) === i)
     )
     this.renderSelected()
@@ -424,22 +448,32 @@ export default class CompositePlugin {
   renderSelected() {
     const m = this.members[this.selectedIndex]
     if (!m || !m.soundId) {
+      this.els.selected.hidden = true
       this.els.selected.innerHTML = ''
       return
     }
-    const startS = (m.delayMs / 1000).toFixed(2)
-    const inS = this.memberIn(m).toFixed(2)
-    const outS = this.memberOut(m).toFixed(2)
+    const entry = this.library.find((s) => s.id === m.soundId)
+    const name = entry ? entry.name : '(missing)'
+    const field = (id, label, value) =>
+      `<label class="cp-fl">${label}<input id="${id}" class="cp-field" type="text" inputmode="decimal" value="${value}" /></label>`
+    this.els.selected.hidden = false
     this.els.selected.innerHTML = `
-      <span class="composite-sel-title">Selected clip</span>
-      <label>Start <input id="csel-start" type="number" min="0" step="0.05" value="${startS}" /> s</label>
-      <label>In <input id="csel-in" type="number" min="0" step="0.05" value="${inS}" /> s</label>
-      <label>Out <input id="csel-out" type="number" min="0" step="0.05" value="${outS}" /> s</label>
-      <span class="composite-sel-len">Length ${fmtSec(this.memberLen(m))}</span>
+      <h2 class="cp-gh">Selected clip: ${escapeHtml(name)}</h2>
+      <div class="cp-under">
+        ${field('csel-start', 'Start', `${(m.delayMs / 1000).toFixed(2)} s`)}
+        ${field('csel-in', 'In', `${this.memberIn(m).toFixed(2)} s`)}
+        ${field('csel-out', 'Out', `${this.memberOut(m).toFixed(2)} s`)}
+        ${field('csel-volume', 'Volume', `${Math.round(m.volume * 100)}%`)}
+        <span class="cp-num cp-big">Length ${fmtSec(this.memberLen(m))}</span>
+        <button id="csel-remove" class="cp-b cp-ghost" type="button">${icon('trash-2')}Remove</button>
+      </div>
     `
+    const i = this.selectedIndex
+    // Typed text like "0.10 s"; anything without a number puts the old value back.
     const bind = (id, fn) =>
       this.els.selected.querySelector(id).addEventListener('change', (e) => {
-        fn(Number(e.target.value))
+        const v = parseNum(e.target.value)
+        if (v != null) fn(v)
         this.render()
       })
     const dur = this.durations[m.soundId] ?? Infinity
@@ -452,6 +486,13 @@ export default class CompositePlugin {
     bind('#csel-out', (v) => {
       m.outSec = Math.min(Math.max(this.memberIn(m) + MIN_CLIP_SEC, v), dur)
     })
+    this.els.selected.querySelector('#csel-volume').addEventListener('change', (e) => {
+      const v = parseNum(e.target.value)
+      if (v != null) m.volume = Math.max(0, Math.min(VOLUME_MAX, v / 100))
+      this.syncVolumeUi(i)
+      this.applyPreviewVolume(i)
+    })
+    this.els.selected.querySelector('#csel-remove').addEventListener('click', () => this.removeMember(i))
   }
 
   // ---- drag ----
@@ -475,8 +516,9 @@ export default class CompositePlugin {
     e.preventDefault()
     // Cheap selection highlight without a full re-render (which would refetch
     // every clip's waveform mid-grab).
-    this.els.lanes.querySelectorAll('.composite-clip').forEach((c) => c.classList.toggle('selected', Number(c.dataset.index) === i))
-    this.els.sidecol.querySelectorAll('.composite-side').forEach((c) => c.classList.toggle('selected', Number(c.dataset.index) === i))
+    this.els.tl.querySelectorAll('.composite-side, .composite-lane, .composite-clip').forEach((c) =>
+      c.classList.toggle('selected', Number(c.dataset.index) === i)
+    )
   }
 
   onPointerMove(e) {
@@ -503,7 +545,6 @@ export default class CompositePlugin {
     this.layoutClip(this.drag.i)
     const totalSec = this.timelineSec()
     const trackW = Math.round(totalSec * this.pxPerSec)
-    this.els.lanes.style.width = `${trackW}px`
     this.renderRuler(totalSec, trackW)
     this.els.total.textContent = `Length ${fmtSec(this.contentEndSec())}`
   }
@@ -516,7 +557,7 @@ export default class CompositePlugin {
 
   // Cheap in-drag reposition without a full re-render.
   layoutClip(i) {
-    const clip = this.els.lanes.querySelector(`.composite-clip[data-index="${i}"]`)
+    const clip = this.els.tl.querySelector(`.composite-clip[data-index="${i}"]`)
     if (!clip) return
     const m = this.members[i]
     clip.style.left = `${Math.round((m.delayMs / 1000) * this.pxPerSec)}px`
@@ -563,8 +604,8 @@ export default class CompositePlugin {
       )
     })
     this.preview = { ctx, nodes, timers }
-    this.els.preview.textContent = '■ Stop'
-    this.els.preview.classList.add('btn-svg-icon-active')
+    this.els.preview.innerHTML = `${icon('square')}<span>Stop</span>`
+    this.els.preview.setAttribute('aria-pressed', 'true')
     // Auto-stop once the longest clip has finished.
     const totalMs = this.contentEndSec() * 1000 + 200
     this.preview.timers.push(setTimeout(() => this.stopPreview(), totalMs))
@@ -590,8 +631,8 @@ export default class CompositePlugin {
     this.preview.ctx.close().catch(() => {})
     this.preview = null
     if (this.els.preview) {
-      this.els.preview.textContent = '▶ Preview'
-      this.els.preview.classList.remove('btn-svg-icon-active')
+      this.els.preview.innerHTML = `${icon('play')}<span>Preview</span>`
+      this.els.preview.setAttribute('aria-pressed', 'false')
     }
   }
 
@@ -620,13 +661,13 @@ export default class CompositePlugin {
     }))
 
     this.els.bake.disabled = true
-    this.els.status.textContent = this.editingId ? 'Re-baking…' : 'Baking…'
+    this.els.status.textContent = this.editingId ? 'Remaking the sound…' : 'Making the sound…'
     try {
       const result = this.editingId
         ? await this.api.composite.rebake({ id: this.editingId, name, members })
         : await this.api.composite.create({ name, members })
       if (result.ok) {
-        this.els.status.textContent = `Saved "${name}" - open it in Remix or add it to a mix like any other sound.`
+        this.els.status.textContent = `Saved "${name}". Open it in Remix or add it to a mix like any other sound.`
         this.editingId = result.entry.id
         await this.refresh()
         this.els.existing.value = this.editingId

@@ -1,0 +1,15 @@
+name: Nightly
+
+# Every push to the 2.0 branch publishes a rolling `nightly` pre-release,
+# installed only by Noctívago apps on the Nightly update channel.
+on:
+  push:
+    branches: [ui-redesign]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    uses: Venari-Hunt/noctivago-plugins/.github/workflows/plugin-nightly.yml@main

@@ -1,291 +1,96 @@
-.composite-tab {
-  padding: 16px;
-  max-width: 900px;
-}
+/* Composite, Desktop 2.0 (step 15). Every value comes from the approved
+   mock (Global Management design-system/mocks/noctivago-look.mjs and
+   noctivago-desktop.mjs: .hint, .tools, .fl, .field, .b, .i, .tb, .fader,
+   .num, .card, .gh.l, .under, .clipedit, and the Composite .tl, .tlr, .tlh,
+   .tlv, .tll, .clip, .lane0), mapped to the app tokens: --bg g0, --surface
+   g1, --surface-alt g2, --surface-hover g3, --text ink, --text-dim mute,
+   --accent amber, --tint, --tint-ink, --radius 12. Hover shades are the
+   literals the mock uses. */
 
-.composite-tab h2 {
-  margin: 0 0 8px;
-  font-size: 15px;
-}
+.composite-tab { display: flex; flex-direction: column; gap: 16px; min-height: 100%; }
+.cp-icon { width: 16px; height: 16px; flex: none; }
+.cp-grow { flex: 1; }
 
-.composite-hint {
-  margin: 0 0 16px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
+.cp-hint { margin: 0; color: var(--text-dim); text-align: center; font-size: 13px; }
+.cp-hint:empty { display: none; }
 
-.composite-top {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  margin-bottom: 14px;
-}
+.cp-tools { display: flex; gap: 8px; align-items: center; justify-content: center; width: 100%; max-width: 960px; margin-inline: auto; flex: none; }
+.cp-tools .cp-grow { flex: 1; }
 
-.composite-top label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-dim);
-  flex: 1 1 240px;
-}
+.cp-fl { display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 16px; color: var(--text-dim); min-width: 0; }
+.cp-field { height: 32px; padding-inline: 12px; border: 0; border-radius: var(--radius); background: var(--surface-alt); color: var(--text); min-width: 0; font: inherit; }
+.cp-field::placeholder { color: var(--text-dim); }
+select.cp-field { padding-right: 8px; }
+.cp-fl .cp-field { color: var(--text); font-size: 14px; width: 100%; }
 
-.composite-top label > span {
-  flex-shrink: 0;
-}
+.cp-b { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding-inline: 12px; border: 0; border-radius: var(--radius); background: var(--surface-hover); color: var(--text); font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap; transition: background 120ms cubic-bezier(.2,.8,.2,1); }
+.cp-b:hover { background: #36363d; }
+.cp-b:active { background: #28282e; }
+.cp-b.cp-ghost { background: transparent; color: var(--text-dim); }
+.cp-b.cp-ghost:hover { background: var(--surface-alt); color: var(--text); }
+.cp-b.cp-pri { background: var(--tint); color: var(--tint-ink); }
+.cp-b.cp-pri:hover { background: #473a17; }
+.cp-b.cp-pri:active { background: #30270f; }
+.cp-b:disabled, .cp-i:disabled { opacity: .38; cursor: not-allowed; }
+.cp-i { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius); background: transparent; color: var(--text-dim); cursor: pointer; }
+.cp-i:hover { background: var(--surface-hover); color: var(--text); }
+.cp-tb { width: 28px; height: 28px; flex: none; }
 
-.composite-top input[type='text'],
-.composite-top select {
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface-alt);
-  color: var(--text);
-  flex: 1;
-  min-width: 0;
-}
+.cp-num { font-variant-numeric: tabular-nums; font-size: 12px; text-align: right; color: var(--text-dim); white-space: nowrap; }
+.cp-num:empty { display: none; }
+.cp-num.cp-big { font-size: 13px; align-self: center; }
 
-/* ---- timeline ---- */
+.cp-fader { -webkit-appearance: none; appearance: none; width: 100%; min-width: 0; height: 24px; margin: 0; background: transparent; cursor: pointer; --p: 50%; }
+.cp-fader::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--text-dim) var(--p), var(--surface-hover) var(--p)); }
+.cp-fader::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%; background: var(--text); }
 
-.composite-editor {
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--surface);
-}
+/* ---- timeline: a header (sound, volume, remove) beside each lane ---- */
 
-.composite-sidecol {
-  width: 190px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--border);
-  background: var(--surface-alt);
-}
+.cp-tl { display: grid; grid-template-columns: 280px minmax(var(--track-w, 0px), 1fr); gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface); overflow-x: auto; scrollbar-width: thin; container-type: inline-size; }
+.cp-tlr { position: relative; height: 16px; overflow: hidden; color: var(--text-dim); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.cp-tick { position: absolute; top: 0; white-space: nowrap; }
+.cp-tick.end { transform: translateX(-100%); }
+.cp-tick:first-child { transform: none; }
 
-.composite-side-spacer {
-  height: 22px;
-  border-bottom: 1px solid var(--border);
-}
+/* Headers stay put while a long timeline scrolls sideways. */
+.cp-tlh { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; position: sticky; left: 0; z-index: 3; background: var(--surface); }
+.cp-tlh .cp-field { width: 100%; }
+.cp-tlv { display: grid; grid-template-columns: minmax(0,1fr) 40px 28px; align-items: center; gap: 8px; }
 
-.composite-side {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-  box-sizing: border-box;
-}
+.cp-tll { position: relative; height: 88px; border-radius: 12px; background: var(--bg); overflow: hidden; }
+.cp-lane0 { display: grid; place-items: center; height: 100%; color: var(--text-dim); font-size: 13px; }
+/* A long track scrolls; keep the hint centered in the part on screen. */
+.cp-lane0 { position: sticky; left: 0; width: min(100%, calc(100cqw - 288px)); }
 
-.composite-side.selected {
-  background: rgba(122, 162, 247, 0.12);
-}
+.cp-clip { position: absolute; top: 8px; bottom: 8px; border-radius: 8px; background: var(--tint); cursor: grab; overflow: hidden; touch-action: none; }
+.cp-clip:active { cursor: grabbing; }
+/* Not drawn in the mock: the picked clip is ringed in the accent so the
+   Selected clip card below reads as "this one". */
+.cp-clip.selected { box-shadow: inset 0 0 0 2px var(--accent); z-index: 2; }
+.cp-clip canvas { position: absolute; left: 0; right: 0; top: 24px; bottom: 4px; width: 100%; height: calc(100% - 28px); pointer-events: none; }
+.cp-clip b { position: absolute; left: 8px; top: 4px; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--tint-ink); pointer-events: none; }
 
-.composite-side-sound {
-  width: 100%;
-  padding: 4px 6px;
-  border-radius: 5px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 11px;
-}
+/* Trim edges: invisible grab zones (the mock draws none); a faint ink bar
+   on hover says "drag me". */
+.composite-clip-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 1; }
+.composite-clip-handle:hover { background: var(--tint-ink); opacity: .35; }
+.composite-clip-handle.left { left: 0; }
+.composite-clip-handle.right { right: 0; }
 
-.composite-side-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
+/* ---- Selected clip card ---- */
 
-.composite-side-volume {
-  flex: 1;
-  min-width: 0;
-}
+.cp-card { display: flex; flex-direction: column; padding: 8px 16px; border-radius: 12px; background: var(--surface); }
+.cp-card[hidden] { display: none; }
+.cp-gh { margin: 0; text-align: left; color: var(--text-dim); padding-block: 8px 4px; font-size: 12px; line-height: 16px; font-weight: 600; }
+.cp-under { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: flex-start; gap: 8px 12px; padding-bottom: 8px; }
+.cp-under .cp-fl { width: 96px; }
 
-.composite-side-vol-val {
-  font-size: 10px;
-  color: var(--text-dim);
-  width: 30px;
-  text-align: right;
-}
-
-.composite-side-remove {
-  padding: 0 4px;
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.composite-scroll {
-  flex: 1;
-  overflow-x: auto;
-  overflow-y: hidden;
-  min-width: 0;
-}
-
-.composite-ruler {
-  position: relative;
-  height: 22px;
-  border-bottom: 1px solid var(--border);
-  font-size: 10px;
-  color: var(--text-dim);
-}
-
-.composite-tick {
-  position: absolute;
-  top: 4px;
-  transform: translateX(-1px);
-  padding-left: 3px;
-  border-left: 1px solid var(--border);
-  white-space: nowrap;
-}
-
-.composite-lanes {
-  position: relative;
-}
-
-.composite-lane {
-  position: relative;
-  border-bottom: 1px solid var(--border);
-  box-sizing: border-box;
-}
-
-.composite-lane:last-child {
-  border-bottom: none;
-}
-
-.composite-clip-empty {
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 11px;
-  color: var(--text-dim);
-  font-style: italic;
-}
-
-.composite-clip {
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: rgba(122, 162, 247, 0.16);
-  cursor: grab;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.composite-clip.selected {
-  border-color: var(--text);
-  background: rgba(122, 162, 247, 0.28);
-  z-index: 2;
-}
-
-.composite-clip:active {
-  cursor: grabbing;
-}
-
-.composite-clip canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.composite-clip-label {
-  position: absolute;
-  left: 8px;
-  top: 3px;
-  font-size: 10px;
-  color: var(--text);
-  text-shadow: 0 1px 2px var(--surface);
-  pointer-events: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: calc(100% - 16px);
-}
-
-.composite-clip-handle {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 8px;
-  cursor: ew-resize;
-  background: var(--accent);
-  opacity: 0.35;
-}
-
-.composite-clip-handle:hover {
-  opacity: 0.9;
-}
-
-.composite-clip-handle.left {
-  left: 0;
-  border-radius: 6px 0 0 6px;
-}
-
-.composite-clip-handle.right {
-  right: 0;
-  border-radius: 0 6px 6px 0;
-}
-
-/* ---- toolbar + selected-clip fields ---- */
-
-.composite-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 12px 0 4px;
-}
-
-.composite-total {
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.composite-selected {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
-  min-height: 18px;
-  margin: 6px 0 12px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.composite-sel-title {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.composite-selected label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.composite-selected input[type='number'] {
-  width: 68px;
-  padding: 4px 6px;
-  border-radius: 5px;
-  border: 1px solid var(--border);
-  background: var(--surface-alt);
-  color: var(--text);
-}
-
-.composite-sel-len {
-  font-style: italic;
-}
-
-#composite-bake {
-  display: block;
-  margin-top: 6px;
-}
-
-.composite-status {
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--text-dim);
+/* The mock's narrow window: headers sit above their lanes. */
+@media (max-width: 900px) {
+  .cp-tools { flex-wrap: wrap; }
+  .cp-tools .cp-grow { flex: 1 1 100%; }
+  .cp-tl { grid-template-columns: minmax(var(--track-w, 0px), 1fr); }
+  .cp-tl > .cp-tl-corner { display: none; }
+  .cp-tlh { width: 100cqw; }
+  .cp-lane0 { width: min(100%, 100cqw); }
 }
