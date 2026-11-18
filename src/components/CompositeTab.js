@@ -417,7 +417,10 @@ export default class CompositePlugin {
     // The canvas may have been recycled by a re-render while we awaited.
     if (!canvas.isConnected) return
     const mid = cssH / 2
-    ctx.strokeStyle = '#a18a45' // the mock's clip waveform, on the --tint clip
+    // Canvas can't read var(); take --tint-ink from the page. The clip sits on
+    // --tint, so a 60% stroke gives the muted gold the mock draws.
+    ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue('--tint-ink').trim() || 'currentColor'
+    ctx.globalAlpha = 0.6
     ctx.beginPath()
     if (peaks && peaks.length) {
       const n = peaks.length
