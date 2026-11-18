@@ -8,7 +8,7 @@ export const MAX_PX_PER_SEC = 160
 export const MIN_CLIP_SEC = 0.05
 export const VOLUME_MAX = 2 // a lane's volume runs 0..200%
 
-// Rounds a member's start to the 50 ms grid (or to a whole ms while Shift
+// Rounds a member's start to the 50 ms grid (or to a whole ms while Ctrl
 // disables snapping). Never negative.
 export function snapMs(ms, disable) {
   if (disable) return Math.max(0, Math.round(ms))
