@@ -4,8 +4,9 @@
    .num, .card, .gh.l, .under, .clipedit, and the Composite .tl, .tlr, .tlh,
    .tlv, .tll, .clip, .lane0), mapped to the app tokens: --bg g0, --surface
    g1, --surface-alt g2, --surface-hover g3, --text ink, --text-dim mute,
-   --accent amber, --tint, --tint-ink, --radius 12. Hover shades are the
-   literals the mock uses. */
+   --accent amber, --tint, --tint-ink, --radius 12. Hover and pressed shades
+   are the app tokens (--surface-raised, --surface-pressed, --tint-hover,
+   --accent-soft-press); no hex literals here. */
 
 .composite-tab { display: flex; flex-direction: column; gap: 16px; min-height: 100%; }
 .cp-icon { width: 16px; height: 16px; flex: none; }
@@ -24,13 +25,13 @@ select.cp-field { padding-right: 8px; }
 .cp-fl .cp-field { color: var(--text); font-size: 14px; width: 100%; }
 
 .cp-b { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding-inline: 12px; border: 0; border-radius: var(--radius); background: var(--surface-hover); color: var(--text); font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap; transition: background 120ms cubic-bezier(.2,.8,.2,1); }
-.cp-b:hover { background: #36363d; }
-.cp-b:active { background: #28282e; }
+.cp-b:hover { background: var(--surface-raised); }
+.cp-b:active { background: var(--surface-pressed); }
 .cp-b.cp-ghost { background: transparent; color: var(--text-dim); }
 .cp-b.cp-ghost:hover { background: var(--surface-alt); color: var(--text); }
 .cp-b.cp-pri { background: var(--tint); color: var(--tint-ink); }
-.cp-b.cp-pri:hover { background: #473a17; }
-.cp-b.cp-pri:active { background: #30270f; }
+.cp-b.cp-pri:hover { background: var(--tint-hover); }
+.cp-b.cp-pri:active { background: var(--accent-soft-press); }
 .cp-b:disabled, .cp-i:disabled { opacity: .38; cursor: not-allowed; }
 .cp-i { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius); background: transparent; color: var(--text-dim); cursor: pointer; }
 .cp-i:hover { background: var(--surface-hover); color: var(--text); }
