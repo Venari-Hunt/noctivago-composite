@@ -45,7 +45,7 @@ main:has(> .tab-panel:not(.hidden) .composite-tab) { padding: var(--space-2); ov
 .cp-time { width: 112px; font-size: 13px; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cp-time b { color: var(--text); font-weight: 600; }
 .cp-zoom { display: inline-flex; align-items: center; gap: 4px; }
-.cp-zoom input { width: 120px; height: 24px; margin: 0; accent-color: var(--accent); }
+.cp-zoom .cp-fader { width: 120px; margin: 0; flex: none; }
 .cp-zoom-val { width: 80px; text-align: right; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cp-fit { width: 72px; }
 .cp-snap { width: 88px; }
@@ -76,9 +76,16 @@ main:has(> .tab-panel:not(.hidden) .composite-tab) { padding: var(--space-2); ov
 
 /* Heads and lanes scroll up and down together; sideways only the lanes move. */
 .cp-tl-body { grid-column: 1 / -1; display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: start; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
-.cp-heads { box-shadow: inset -1px 0 var(--border); }
-.cp-lh { height: 56px; padding: 0 8px 0 12px; box-shadow: inset 0 -1px var(--border), inset -1px 0 var(--border); display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; box-sizing: border-box; cursor: pointer; }
+.cp-heads { position: relative; box-shadow: inset -1px 0 var(--border); }
+.cp-lh { height: 56px; padding: 0 8px 0 12px; box-shadow: inset 0 -1px var(--border), inset -1px 0 var(--border); display: grid; grid-template-columns: minmax(0, 1fr) 28px 28px; gap: 4px; align-items: center; box-sizing: border-box; cursor: grab; user-select: none; }
 .cp-lh[aria-selected="true"] { background: var(--surface-alt); }
+.cp-lh.cp-lifting { opacity: .5; }
+.cp-insert { position: absolute; left: 0; right: 0; height: 2px; margin-top: -1px; background: var(--accent); pointer-events: none; z-index: 2; }
+/* M and S: off is quiet, on is the tint, like the Snap button. */
+.cp-ms { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 12px; font-weight: 700; color: var(--text-dim); display: grid; place-items: center; cursor: pointer; }
+.cp-ms:hover { background: var(--surface-hover); color: var(--text); }
+.cp-ms[aria-pressed="true"] { background: var(--tint); color: var(--tint-ink); }
+.cp-ms:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .cp-lbl { display: flex; flex-direction: column; min-width: 0; }
 .cp-lname { font-weight: 600; font-size: 13px; line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-lsub { font-size: 12px; line-height: 16px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -88,6 +95,9 @@ main:has(> .tab-panel:not(.hidden) .composite-tab) { padding: var(--space-2); ov
 .cp-lane { position: relative; height: 56px; box-shadow: inset 0 -1px var(--border); box-sizing: border-box; }
 .cp-lane0 { position: sticky; left: 0; display: flex; align-items: center; height: 100%; padding: 0 12px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
 .cp-drop { height: 56px; display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: var(--text-dim); position: sticky; left: 0; white-space: nowrap; }
+.cp-drop.cp-over { color: var(--tint-ink); background: var(--tint); }
+.cp-muted .cp-clip canvas { opacity: .35; }
+.cp-muted .cp-clip b { color: var(--text-dim); }
 
 .cp-clip { position: absolute; top: 8px; height: 40px; border-radius: 8px; background: var(--surface-hover); overflow: hidden; cursor: grab; touch-action: none; }
 .cp-clip:active { cursor: grabbing; }
@@ -111,6 +121,7 @@ main:has(> .tab-panel:not(.hidden) .composite-tab) { padding: var(--space-2); ov
 .cp-overview { position: relative; height: 32px; border-radius: 8px; background: var(--surface); overflow: hidden; margin-left: 8px; cursor: pointer; touch-action: none; }
 .cp-overview i { position: absolute; height: 4px; border-radius: 2px; background: var(--text-faint); pointer-events: none; }
 .cp-overview i.sel { background: var(--accent); }
+.cp-overview i.m { opacity: .45; }
 .cp-view { position: absolute; top: 0; bottom: 0; border-radius: 8px; box-shadow: inset 0 0 0 2px var(--text-dim); background: color-mix(in srgb, var(--text) 5%, transparent); cursor: grab; }
 .cp-view-edge { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
 .cp-view-edge.left { left: 0; }
@@ -131,6 +142,14 @@ main:has(> .tab-panel:not(.hidden) .composite-tab) { padding: var(--space-2); ov
 .cp-msg { grid-column: 1 / -1; font-size: 12px; line-height: 16px; color: var(--danger); }
 .cp-readout { display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 16px; color: var(--text-dim); }
 .cp-readout b { height: 32px; line-height: 32px; font-size: 13px; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.cp-info { display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 16px; color: var(--text-dim); min-width: 0; }
+/* The Sound readout: icon and name; the list sits invisibly over it so a click opens the choices. */
+.cp-sound { position: relative; display: flex; align-items: center; gap: 8px; height: 32px; font-size: 13px; color: var(--text); min-width: 0; border-radius: 8px; }
+.cp-sound:hover { background: var(--surface-alt); }
+.cp-sound:has(select:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.cp-sound .cp-icon { color: var(--text-dim); flex: none; }
+.cp-sound-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.cp-sound select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .cp-empty { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 20px; }
 .cp-status { margin: 0; font-size: 12px; line-height: 16px; color: var(--text-dim); }
 .cp-status:empty { display: none; }
