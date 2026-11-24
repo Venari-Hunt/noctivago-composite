@@ -20,7 +20,8 @@ import {
   memberIn,
   memberOut,
   previewPlan,
-  timelineSec
+  timelineSec,
+  trimStartPatch
 } from '../domain/members.js'
 import {
   clampZoom,
@@ -324,11 +325,9 @@ function CompositeApp({ api, ctl }) {
       } else if (d.mode === 'in') {
         // Trim the head: move the in-point and shift the clip's start by the
         // same amount so the audio under the pointer stays put (DAW feel).
-        const newIn = Math.max(0, Math.min(d.origIn + deltaSec, d.origOut - MIN_CLIP_SEC))
-        patchMember(d.uid, () => ({
-          inSec: newIn,
-          delayMs: Math.max(0, Math.round(d.origDelayMs + (newIn - d.origIn) * 1000))
-        }))
+        patchMember(d.uid, () =>
+          trimStartPatch({ delayMs: d.origDelayMs, inSec: d.origIn, outSec: d.origOut }, d.origIn + deltaSec)
+        )
       } else {
         const newOut = Math.min(dur, Math.max(d.origOut + deltaSec, d.origIn + MIN_CLIP_SEC))
         patchMember(d.uid, () => ({ outSec: newOut }))
@@ -533,15 +532,20 @@ function CompositeApp({ api, ctl }) {
       <aside className="cp-pane cp-side" aria-label="Inspector">
         {sel?.soundId ? (
           <ClipCard
+            key={sel.uid}
             m={sel}
             entry={selEntry}
             durations={durations}
             onStart={(v) => patchMember(sel.uid, () => ({ delayMs: Math.max(0, Math.round(v * 1000)) }))}
-            onIn={(v) => patchMember(sel.uid, (m) => ({ inSec: Math.min(Math.max(0, v), memberOut(m, durations) - MIN_CLIP_SEC) }))}
+            onIn={(v) =>
+              patchMember(sel.uid, (m) =>
+                trimStartPatch({ delayMs: m.delayMs, inSec: memberIn(m), outSec: memberOut(m, durations) }, v)
+              )
+            }
             onOut={(v, dur) =>
               patchMember(sel.uid, (m) => ({ outSec: Math.min(Math.max(memberIn(m) + MIN_CLIP_SEC, v), dur) }))
             }
-            onVolume={(v) => setVolume(selected, v / 100)}
+            onVolume={(v) => setVolume(selected, v)}
             onRemove={() => removeMember(selected)}
           />
         ) : (

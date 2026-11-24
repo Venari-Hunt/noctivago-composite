@@ -4,7 +4,7 @@
 export const SNAP_MS = 50
 export const LANE_H = 56 // the v2 mock's layer row height
 export const MIN_CLIP_SEC = 0.05
-export const VOLUME_MAX = 2 // a lane's volume runs 0..200%
+export const VOLUME_MAX = 1.5 // a layer's volume runs 0..150%, like the mock's sliders
 
 // Rounds a member's start to the 50 ms grid (or to a whole ms while Ctrl
 // disables snapping). Never negative.
@@ -54,14 +54,17 @@ export function rulerMarks(px, totalSec) {
   return marks
 }
 
-// Reads a typed field like "0.10 s" or "80%". Returns null when there's no
-// number in it, so the caller can put the old value back.
-export function parseNum(text) {
-  const n = parseFloat(String(text).replace(',', '.'))
+// Reads a typed time like "0.10 s", "1,5" or "-2". Returns null unless the whole
+// text is one number with an optional "s", so "0,05s." or "abc" is bad input and
+// the field can say so instead of guessing.
+export function parseSeconds(text) {
+  const m = /^\s*(-?(?:\d+(?:[.,]\d*)?|[.,]\d+))\s*s?\s*$/i.exec(String(text))
+  if (!m) return null
+  const n = Number(m[1].replace(',', '.'))
   return Number.isFinite(n) ? n : null
 }
 
-// The CSS --p fill of a lane's volume fader (range 0..VOLUME_MAX).
-export function volumeFill(volume) {
-  return `${Math.round((Math.max(0, Math.min(VOLUME_MAX, volume)) / VOLUME_MAX) * 100)}%`
+// The CSS --p fill of a volume fader (range 0..max, the mock's 150%).
+export function volumeFill(volume, max = VOLUME_MAX) {
+  return `${Math.round((Math.max(0, Math.min(max, volume)) / max) * 100)}%`
 }
