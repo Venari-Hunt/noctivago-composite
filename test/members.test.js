@@ -15,6 +15,7 @@ import {
   contentEndSec,
   timelineSec,
   previewPlan,
+  savePayload,
   trimStartPatch
 } from '../src/domain/members.js'
 
@@ -30,6 +31,21 @@ test('members get unique uids and saved members drop nothing else', () => {
     { ...saved, uid: 0 },
     { uid: 0, soundId: 'a', name: '', delayMs: 250, inSec: 0.5, outSec: null, volume: 0.8, muted: false, solo: false }
   )
+})
+
+test('Make sound saves muted layers with muted: true, unmuted ones without the field; a saved mute loads back muted', () => {
+  const a = { ...blankMember(), soundId: 'a', name: ' Click ', delayMs: 10.4, volume: 9 }
+  const b = { ...blankMember(), soundId: 'b', outSec: 1, muted: true, solo: true }
+  const empty = blankMember()
+  const payload = savePayload([a, b, empty], durations)
+  assert.deepEqual(payload, [
+    { soundId: 'a', name: 'Click', delayMs: 10, inSec: 0, outSec: 3, volume: 4 },
+    { soundId: 'b', delayMs: 0, inSec: 0, outSec: 1, volume: 1, muted: true }
+  ])
+  assert.equal(memberFromSaved(payload[1]).muted, true)
+  assert.equal(memberFromSaved(payload[1]).solo, false, 'solo is never saved')
+  assert.equal(memberFromSaved(payload[0]).muted, false)
+  assert.equal(memberFromSaved({ soundId: 'a', muted: 'yes' }).muted, false)
 })
 
 test('a composite saved before layer names loads with the default name; a saved name is kept', () => {
