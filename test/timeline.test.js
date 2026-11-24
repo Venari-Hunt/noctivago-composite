@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { snapMs, fmtSec, rulerLabel, rulerMarks, parseNum, volumeFill } from '../src/domain/timeline.js'
+import { snapMs, fmtSec, rulerLabel, rulerMarks, parseSeconds, volumeFill } from '../src/domain/timeline.js'
 import { escapeHtml } from '../src/domain/html.js'
 
 test('snapMs rounds to the 50 ms grid unless snapping is off', () => {
@@ -37,19 +37,26 @@ test('ruler marks get sparser as you zoom out and denser as you zoom in', () => 
   assert.equal(far.length, 25)
 })
 
-test('parseNum reads typed fields with units, or gives null', () => {
-  assert.equal(parseNum('0.10 s'), 0.1)
-  assert.equal(parseNum('80%'), 80)
-  assert.equal(parseNum('1,5 s'), 1.5)
-  assert.equal(parseNum('abc'), null)
-  assert.equal(parseNum(''), null)
+test('parseSeconds reads a whole number with an optional s, or gives null', () => {
+  assert.equal(parseSeconds('0.10 s'), 0.1)
+  assert.equal(parseSeconds('1,5 s'), 1.5)
+  assert.equal(parseSeconds('0.5'), 0.5)
+  assert.equal(parseSeconds(' 2s '), 2)
+  assert.equal(parseSeconds('-2'), -2)
+  assert.equal(parseSeconds('.5'), 0.5)
+  assert.equal(parseSeconds('abc'), null)
+  assert.equal(parseSeconds('0,05s.'), null) // the mock's bad-input example
+  assert.equal(parseSeconds('1.2.3'), null)
+  assert.equal(parseSeconds('80%'), null)
+  assert.equal(parseSeconds(''), null)
 })
 
-test('volumeFill maps 0..200% onto the fader track', () => {
+test('volumeFill maps 0..150% onto the fader track', () => {
   assert.equal(volumeFill(0), '0%')
-  assert.equal(volumeFill(1), '50%')
-  assert.equal(volumeFill(2), '100%')
+  assert.equal(volumeFill(0.75), '50%')
+  assert.equal(volumeFill(1.5), '100%')
   assert.equal(volumeFill(5), '100%')
+  assert.equal(volumeFill(2, 2), '100%') // an older composite above 150% gets a wider track
 })
 
 test('escapeHtml escapes markup characters', () => {

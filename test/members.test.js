@@ -8,7 +8,8 @@ import {
   memberLen,
   contentEndSec,
   timelineSec,
-  previewPlan
+  previewPlan,
+  trimStartPatch
 } from '../src/domain/members.js'
 
 const durations = { a: 3, b: 2 }
@@ -66,4 +67,20 @@ test('Preview from the playhead skips finished clips and seeks into running ones
   const early = previewPlan([b], durations, 0.4)
   near(early[0].startInMs, 600)
   assert.equal(early[0].seekSec, 0)
+})
+
+test('trimStartPatch moves the in-point and shifts the start by the same amount', () => {
+  const p = trimStartPatch({ delayMs: 500, inSec: 0, outSec: 3 }, 1.2)
+  assert.equal(p.inSec, 1.2)
+  assert.equal(p.delayMs, 1700)
+})
+
+test('trimStartPatch stops 0.05 s before Out and never moves the start below 0', () => {
+  const late = trimStartPatch({ delayMs: 0, inSec: 0, outSec: 3 }, 99)
+  near(late.inSec, 2.95)
+  assert.equal(late.delayMs, 2950)
+  const back = trimStartPatch({ delayMs: 200, inSec: 1, outSec: 3 }, 0)
+  assert.equal(back.inSec, 0)
+  assert.equal(back.delayMs, 0) // would be -800
+  assert.equal(trimStartPatch({ delayMs: 0, inSec: 0, outSec: 3 }, -5).inSec, 0)
 })

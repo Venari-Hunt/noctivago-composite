@@ -49,6 +49,14 @@ export function contentEndSec(members, durations) {
   return end
 }
 
+// Trimming the head to `inSec`: the in-point moves and the clip's start shifts by
+// the same amount, so the audio stays where it was (the DAW way). Dragging the In
+// handle and typing "Trim start" both go through here. Returns the member patch.
+export function trimStartPatch({ delayMs, inSec, outSec }, wanted) {
+  const newIn = Math.max(0, Math.min(wanted, outSec - MIN_CLIP_SEC))
+  return { inSec: newIn, delayMs: Math.max(0, Math.round(delayMs + (newIn - inSec) * 1000)) }
+}
+
 // The timeline is a little longer than its content so there is room to drag.
 export function timelineSec(members, durations) {
   return Math.max(4, contentEndSec(members, durations) * 1.05 + 0.5)

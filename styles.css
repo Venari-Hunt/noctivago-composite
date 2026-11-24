@@ -112,6 +112,8 @@ main:has(> .tab-panel:not(.hidden) .composite-tab) { padding: var(--space-2); ov
 .cp-field.wide { grid-column: 1 / -1; }
 .cp-field input, .cp-field select { height: 32px; border-radius: 8px; border: 0; background: var(--surface-alt); color: var(--text); font: inherit; font-size: 13px; padding: 0 8px; width: 100%; box-sizing: border-box; font-variant-numeric: tabular-nums; min-width: 0; }
 .cp-field input::placeholder { color: var(--text-dim); }
+.cp-field input[aria-invalid="true"] { box-shadow: inset 0 0 0 2px var(--danger); }
+.cp-msg { grid-column: 1 / -1; font-size: 12px; line-height: 16px; color: var(--danger); }
 .cp-readout { display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 16px; color: var(--text-dim); }
 .cp-readout b { height: 32px; line-height: 32px; font-size: 13px; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .cp-empty { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 20px; }
