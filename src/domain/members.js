@@ -7,21 +7,60 @@ import { MIN_CLIP_SEC } from './timeline.js'
 
 let nextUid = 1
 
+// `name` is the layer's own name ('' = use the sound's name). `muted` and `solo`
+// are editing aids and are never saved: a muted layer is simply left out of
+// Preview and Make sound, and solo only changes what Preview plays.
 export function blankMember() {
-  return { uid: nextUid++, soundId: '', delayMs: 0, inSec: null, outSec: null, volume: 1 }
+  return { uid: nextUid++, soundId: '', name: '', delayMs: 0, inSec: null, outSec: null, volume: 1, muted: false, solo: false }
 }
 
 // A member from a saved composite entry (uid is for React and Preview only;
-// it is never saved).
+// it is never saved). Composites saved before layers had names have no `name`.
 export function memberFromSaved(m) {
   return {
     uid: nextUid++,
     soundId: m.soundId,
+    name: typeof m.name === 'string' ? m.name : '',
     delayMs: m.delayMs ?? 0,
     inSec: m.inSec ?? null,
     outSec: m.outSec ?? null,
-    volume: m.volume ?? 1
+    volume: m.volume ?? 1,
+    muted: false,
+    solo: false
   }
+}
+
+// What a layer is called: its own name, else its sound's, else "Empty layer".
+export function layerTitle(m, entry) {
+  return m.name.trim() || (m.soundId ? (entry ? entry.name : '(missing)') : 'Empty layer')
+}
+
+// The members Preview plays: not muted, and only the soloed ones while any
+// layer with a sound is soloed.
+export function audibleMembers(members) {
+  const anySolo = members.some((m) => m.soundId && m.solo)
+  return members.filter((m) => m.soundId && !m.muted && (!anySolo || m.solo))
+}
+
+// What Make sound renders: everything with a sound that is not muted (solo
+// does not matter here).
+export function bakeMembers(members) {
+  return members.filter((m) => m.soundId && !m.muted)
+}
+
+// A copy of a layer for Duplicate: same sound, timing and volume, a fresh uid,
+// not muted or soloed.
+export function duplicateMember(m, name) {
+  return { ...m, uid: nextUid++, name, muted: false, solo: false }
+}
+
+// A new array with the item at `from` moved to index `to`.
+export function moveItem(list, from, to) {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list
+  const next = list.slice()
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  return next
 }
 
 // Resolve a member's effective trim, filling nulls from the known duration.
@@ -71,6 +110,9 @@ export function patchIsNoop(m, patch, durations = {}) {
     m.soundId === next.soundId &&
     m.delayMs === next.delayMs &&
     m.volume === next.volume &&
+    m.name === next.name &&
+    m.muted === next.muted &&
+    m.solo === next.solo &&
     memberIn(m) === memberIn(next) &&
     memberOut(m, durations) === memberOut(next, durations)
   )
@@ -86,8 +128,7 @@ export function timelineSec(members, durations) {
 // seek, and how long to let it play. Clips already over are left out.
 export function previewPlan(members, durations, from = 0) {
   const plan = []
-  for (const m of members) {
-    if (!m.soundId) continue
+  for (const m of audibleMembers(members)) {
     const clipStart = m.delayMs / 1000
     const len = memberLen(m, durations)
     const clipEnd = clipStart + len

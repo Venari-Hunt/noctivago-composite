@@ -14,11 +14,16 @@ import { Lanes, LayerHeads, Overview, Ruler, TimeReadout, createPlayheadStore } 
 import { ClipCard, CompositeCard, LayerCard, NoClipCard } from './Inspector.jsx'
 import { MIN_CLIP_SEC, VOLUME_MAX, fmtSec, snapMs } from '../domain/timeline.js'
 import {
+  audibleMembers,
+  bakeMembers,
   blankMember,
   contentEndSec,
+  duplicateMember,
+  layerTitle,
   memberFromSaved,
   memberIn,
   memberOut,
+  moveItem,
   nudgeMs,
   patchIsNoop,
   previewPlan,
@@ -40,6 +45,9 @@ import {
   zoomToSlider
 } from '../domain/zoom.js'
 import { Preview } from '../audio/preview.js'
+
+// What the app's library rows carry when they are dragged (the sound's id).
+const LIBRARY_DRAG_TYPE = 'application/x-noctivago-mix-card'
 
 // Mounts the tab into the host's container; the plugin class drives it.
 export function mountComposite(container, { api }) {
@@ -70,6 +78,7 @@ function CompositeApp({ api, ctl }) {
   const [peaksVersion, setPeaksVersion] = useState(0)
   const [snapOn, setSnapOn] = useState(true)
   const [keysOpen, setKeysOpen] = useState(false)
+  const [dropOver, setDropOver] = useState(false) // a library sound is being dragged over the timeline
   const [, setHistTick] = useState(0) // redraws Undo/Redo when the stacks change
   const hist = useMemo(() => createHistory(), [])
 
@@ -88,10 +97,14 @@ function CompositeApp({ api, ctl }) {
   const totalSec = timelineSec(members, durations)
   const contentEnd = contentEndSec(members, durations)
   const hasSounds = members.some((m) => m.soundId)
+  // Preview plays only the audible layers (not muted; only the soloed ones while any is soloed).
+  const audible = audibleMembers(members)
+  const audibleEnd = contentEndSec(audible, durations)
+  const audibleSig = members.map((m) => `${m.uid}${m.muted ? 'm' : ''}${m.solo ? 's' : ''}`).sort().join(',')
   const fitPx = fitZoom(Math.max(240, viewW), totalSec)
   const px = frozenPx ?? zoom ?? fitPx
   const innerW = Math.max(Math.round(totalSec * px), viewW)
-  live.current = { members, durations, px, totalSec, contentEnd, viewW, selected, snapOn, keysOpen, hasSounds }
+  live.current = { members, durations, px, totalSec, contentEnd, audibleEnd, viewW, selected, snapOn, keysOpen, hasSounds, library, editingId }
 
   // ---- members ----
   const patchMember = useCallback((uid, fn) => {
@@ -208,6 +221,58 @@ function CompositeApp({ api, ctl }) {
     setSelected(live.current.members.length)
   }
 
+  // The selection follows the layer it was on, whichever way the others move.
+  const moveLayer = (from, to) => {
+    const { members: ms, selected: sel } = live.current
+    const next = moveItem(ms, from, to)
+    if (next === ms) return
+    record()
+    setMembers(next)
+    const keep = ms[sel]?.uid
+    setSelected(Math.max(0, next.findIndex((m) => m.uid === keep)))
+  }
+
+  const duplicateLayer = (i) => {
+    const { members: ms, library: lib } = live.current
+    const m = ms[i]
+    if (!m) return
+    const title = layerTitle(m, lib.find((s) => s.id === m.soundId))
+    const copy = duplicateMember(m, m.soundId || m.name.trim() ? `${title} copy` : '')
+    record()
+    setMembers((list) => {
+      const next = [...list]
+      next.splice(list.findIndex((x) => x.uid === m.uid) + 1, 0, copy)
+      return next
+    })
+    setSelected(i + 1)
+  }
+
+  const toggleFlag = (i, flag) => {
+    const m = live.current.members[i]
+    if (m) edit(m.uid, () => ({ [flag]: !m[flag] }))
+  }
+
+  const renameLayer = (i, name) => {
+    const m = live.current.members[i]
+    if (m) edit(m.uid, () => ({ name }))
+  }
+
+  // A sound dragged in from the library becomes a new layer at the bottom.
+  const dropSound = async (e) => {
+    e.preventDefault()
+    setDropOver(false)
+    const id = e.dataTransfer.getData(LIBRARY_DRAG_TYPE)
+    const { library: lib, editingId: own, members: ms } = live.current
+    const entry = lib.find((s) => s.id === id)
+    if (!entry || entry.status !== 'ok' || entry.id === own) return
+    record()
+    const m = { ...blankMember(), soundId: id }
+    setMembers((list) => [...list, m])
+    setSelected(ms.length)
+    await ensureDuration(id)
+  }
+  const isLibraryDrag = (e) => e.dataTransfer?.types?.includes(LIBRARY_DRAG_TYPE)
+
   const setSound = async (i, soundId) => {
     const uid = live.current.members[i].uid
     edit(uid, () => ({ soundId, inSec: null, outSec: null }))
@@ -317,7 +382,7 @@ function CompositeApp({ api, ctl }) {
   }
 
   const startPreviewAt = (from) => {
-    const { members: ms, durations: ds, contentEnd: end } = live.current
+    const { members: ms, durations: ds, audibleEnd: end } = live.current
     const plan = previewPlan(ms, ds, from)
     const ok = preview.current.start({ plan, members: ms, from, endSec: end })
     setPreviewing(ok)
@@ -327,10 +392,17 @@ function CompositeApp({ api, ctl }) {
   const togglePreview = () => {
     if (preview.current.active) return stopPreview()
     let from = playhead.get()
-    if (from >= live.current.contentEnd - 0.01) from = 0
+    if (from >= live.current.audibleEnd - 0.01) from = 0
     playhead.set(from)
     startPreviewAt(from)
   }
+
+  // Muting, soloing or taking a layer out while Preview runs changes what is heard
+  // at once: it carries on from the playhead with the new set.
+  useEffect(() => {
+    if (preview.current?.active) startPreviewAt(playhead.get())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audibleSig])
 
   // Clicking the ruler moves the playhead; a running Preview carries on from there.
   const seek = (x) => {
@@ -437,7 +509,7 @@ function CompositeApp({ api, ctl }) {
       else setSelected(-1)
     } else if (act.id === 'snap') setSnapOn((v) => !v)
     else if (act.id === 'fit') fit()
-    else if (act.id === 'preview' && live.current.hasSounds) togglePreview()
+    else if (act.id === 'preview' && live.current.audibleEnd > 0) togglePreview()
   }
   useEffect(() => {
     const onKey = (e) => onKeyRef.current(e)
@@ -460,8 +532,10 @@ function CompositeApp({ api, ctl }) {
     stopPreview()
     const trimmed = name.trim()
     if (!trimmed) return setStatus('Give it a name first.')
-    const usable = members.filter((m) => m.soundId)
-    if (usable.length < 2) return setStatus('Choose at least two sounds.')
+    // Everything with a sound that is not muted (solo is for Preview only).
+    const usable = bakeMembers(members)
+    const mutedCount = members.filter((m) => m.soundId && m.muted).length
+    if (usable.length < 2) return setStatus(mutedCount ? 'Choose at least two sounds that are not muted.' : 'Choose at least two sounds.')
     // Make sure every trim is concrete before sending (nulls -> real values).
     const ds = { ...durations }
     await Promise.all(
@@ -472,6 +546,8 @@ function CompositeApp({ api, ctl }) {
     )
     const payload = usable.map((m) => ({
       soundId: m.soundId,
+      // A layer name is saved only when you gave one; older composites have none.
+      ...(m.name.trim() ? { name: m.name.trim() } : {}),
       delayMs: Math.max(0, Math.round(m.delayMs)),
       inSec: memberIn(m),
       outSec: memberOut(m, ds),
@@ -484,7 +560,10 @@ function CompositeApp({ api, ctl }) {
         ? await api.composite.rebake({ id: editingId, name: trimmed, members: payload })
         : await api.composite.create({ name: trimmed, members: payload })
       if (result.ok) {
-        setStatus(`Saved "${trimmed}". Open it in Remix or add it to a mix like any other sound.`)
+        setStatus(
+          `Saved "${trimmed}". Open it in Remix or add it to a mix like any other sound.` +
+            (mutedCount ? ` ${mutedCount === 1 ? 'A muted layer was' : `${mutedCount} muted layers were`} left out.` : '')
+        )
         await refresh()
         setEditingId(result.entry.id)
       } else {
@@ -559,7 +638,7 @@ function CompositeApp({ api, ctl }) {
             type="button"
             aria-pressed={previewing}
             title="Preview the mix (Space)"
-            disabled={!hasSounds}
+            disabled={audible.length === 0}
             onClick={togglePreview}
           >
             <Icon name={previewing ? 'stop' : 'play'} />
@@ -592,11 +671,13 @@ function CompositeApp({ api, ctl }) {
             </button>
             <input
               id="composite-zoom"
+              className="cp-fader"
               type="range"
               min="0"
               max="100"
               step="0.5"
               value={zoomToSlider(px)}
+              style={{ '--p': `${zoomToSlider(px)}%` }}
               aria-label="Zoom"
               title="Ctrl+wheel zooms around the pointer"
               onChange={(e) => zoomTo(sliderToZoom(e.target.value), viewW / 2)}
@@ -647,9 +728,32 @@ function CompositeApp({ api, ctl }) {
         <div className="cp-tl" id="composite-tl">
           <div className="cp-corner">Layers</div>
           <Ruler rulerRef={rulerRef} px={px} totalSec={totalSec} innerW={innerW} onSeek={seek} />
-          <div className="cp-tl-body">
-            <LayerHeads members={members} library={library} selected={selected} onSelect={setSelected} />
+          <div
+            className="cp-tl-body"
+            onDragOver={(e) => {
+              if (!isLibraryDrag(e)) return
+              e.preventDefault() // lets the drop happen
+              e.dataTransfer.dropEffect = 'move'
+              setDropOver(true)
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget)) setDropOver(false)
+            }}
+            onDrop={(e) => {
+              if (isLibraryDrag(e)) dropSound(e)
+            }}
+          >
+            <LayerHeads
+              members={members}
+              library={library}
+              selected={selected}
+              onSelect={setSelected}
+              onMove={moveLayer}
+              onMute={(i) => toggleFlag(i, 'muted')}
+              onSolo={(i) => toggleFlag(i, 'solo')}
+            />
             <Lanes
+              dropOver={dropOver}
               lanesRef={lanesRef}
               api={api}
               cache={peaks.current}
@@ -716,9 +820,13 @@ function CompositeApp({ api, ctl }) {
             m={sel}
             index={selected}
             count={members.length}
+            title={layerTitle(sel, selEntry)}
             sounds={editableSounds}
+            soundName={selEntry ? selEntry.name : '(missing)'}
+            onName={(name) => renameLayer(selected, name)}
             onSound={(id) => setSound(selected, id)}
             onVolume={(v) => setVolume(selected, v)}
+            onDuplicate={() => duplicateLayer(selected)}
             onRemove={() => removeMember(selected)}
           />
         )}

@@ -127,29 +127,72 @@ export function NoClipCard() {
   )
 }
 
-export function LayerCard({ m, index, count, sounds, onSound, onVolume, onRemove }) {
+// The layer's name. Shows the sound's name until you give it one; commits when
+// you leave the field (or press Enter), Escape puts the old name back, and
+// emptying it goes back to the sound's name.
+function LayerName({ title, custom, onCommit }) {
+  const [draft, setDraft] = useState(null)
+  const commit = () => {
+    if (draft == null) return
+    setDraft(null)
+    onCommit(draft.trim() === title && !custom ? '' : draft.trim())
+  }
+  return (
+    <label className="cp-field">
+      Layer name
+      <input
+        id="layer-name"
+        type="text"
+        aria-label="Layer name"
+        value={draft ?? title}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          else if (e.key === 'Escape') setDraft(null)
+        }}
+      />
+    </label>
+  )
+}
+
+export function LayerCard({ m, index, count, title, sounds, soundName, onName, onSound, onVolume, onDuplicate, onRemove }) {
   return (
     <div className="cp-card" id="composite-layer">
       <h2>
         <Icon name="stack" />
         Layer<small>{`${index + 1} of ${count}`}</small>
       </h2>
-      <label className="cp-field">
+      <LayerName key={m.uid} title={title} custom={m.name.trim() !== ''} onCommit={onName} />
+      {/* The mock shows the sound as a readout; the list sits invisibly over it,
+          so a click still opens the choices. */}
+      <div className="cp-info">
         Sound
-        <select id="layer-sound" value={m.soundId} onChange={(e) => onSound(e.target.value)}>
-          <option value="">Pick a sound</option>
-          {sounds.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-      </label>
+        <span className="cp-sound" title="Click to change the sound">
+          <Icon name="music" />
+          <span className="cp-sound-name">{m.soundId ? soundName : 'Pick a sound'}</span>
+          <Icon name="caret" size={12} />
+          <select id="layer-sound" aria-label="Sound" value={m.soundId} onChange={(e) => onSound(e.target.value)}>
+            <option value="">Pick a sound</option>
+            {sounds.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </span>
+      </div>
       <Slider id="layer-volume" valueId="layer-volume-val" label="Layer volume" volume={m.volume} onChange={onVolume} />
-      <button id="layer-remove" className="cp-b cp-fill cp-wide" type="button" title="Remove this layer and its clip" onClick={onRemove}>
-        <Icon name="trash-2" />
-        Remove layer
-      </button>
+      <div className="cp-grid2">
+        <button id="layer-duplicate" className="cp-b cp-fill" type="button" title="Duplicate this layer" onClick={onDuplicate}>
+          <Icon name="copy" />
+          Duplicate
+        </button>
+        <button id="layer-remove" className="cp-b cp-fill" type="button" title="Remove this layer and its clips" onClick={onRemove}>
+          <Icon name="trash-2" />
+          Remove
+        </button>
+      </div>
     </div>
   )
 }

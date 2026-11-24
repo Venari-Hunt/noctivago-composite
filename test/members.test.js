@@ -1,6 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  audibleMembers,
+  bakeMembers,
+  duplicateMember,
+  layerTitle,
+  moveItem,
+  patchIsNoop,
   blankMember,
   memberFromSaved,
   memberIn,
@@ -20,7 +26,58 @@ test('members get unique uids and saved members drop nothing else', () => {
   const y = blankMember()
   assert.notEqual(x.uid, y.uid)
   const saved = memberFromSaved({ soundId: 'a', delayMs: 250, inSec: 0.5, volume: 0.8 })
-  assert.deepEqual({ ...saved, uid: 0 }, { uid: 0, soundId: 'a', delayMs: 250, inSec: 0.5, outSec: null, volume: 0.8 })
+  assert.deepEqual(
+    { ...saved, uid: 0 },
+    { uid: 0, soundId: 'a', name: '', delayMs: 250, inSec: 0.5, outSec: null, volume: 0.8, muted: false, solo: false }
+  )
+})
+
+test('a composite saved before layer names loads with the default name; a saved name is kept', () => {
+  assert.equal(memberFromSaved({ soundId: 'a', delayMs: 0 }).name, '')
+  assert.equal(memberFromSaved({ soundId: 'a', name: 'Latch click' }).name, 'Latch click')
+  assert.equal(memberFromSaved({ soundId: 'a', name: 7 }).name, '')
+})
+
+test('a layer is called its own name, else its sound, else Empty layer', () => {
+  const m = { ...blankMember(), soundId: 'a' }
+  assert.equal(layerTitle(m, { name: 'Door creak' }), 'Door creak')
+  assert.equal(layerTitle({ ...m, name: '  Creak  ' }, { name: 'Door creak' }), 'Creak')
+  assert.equal(layerTitle(m, undefined), '(missing)')
+  assert.equal(layerTitle(blankMember(), undefined), 'Empty layer')
+})
+
+test('mute and solo: Preview plays the audible layers, Make sound everything not muted', () => {
+  const a = { ...blankMember(), soundId: 'a' }
+  const b = { ...blankMember(), soundId: 'b', muted: true }
+  const c = { ...blankMember(), soundId: 'a' }
+  const empty = { ...blankMember(), solo: true } // solo on a layer with no sound counts for nothing
+  assert.deepEqual(audibleMembers([a, b, c, empty]).map((m) => m.uid), [a.uid, c.uid])
+  assert.deepEqual(bakeMembers([a, b, c, empty]).map((m) => m.uid), [a.uid, c.uid])
+  const soloC = { ...c, solo: true }
+  assert.deepEqual(audibleMembers([a, b, soloC]).map((m) => m.uid), [c.uid])
+  assert.deepEqual(bakeMembers([a, b, soloC]).map((m) => m.uid), [a.uid, c.uid]) // solo is Preview only
+  assert.deepEqual(audibleMembers([a, { ...b, solo: true }]).map((m) => m.uid), []) // soloed but muted: silent
+  assert.deepEqual(previewPlan([a, b, soloC], durations).map((p) => p.uid), [c.uid])
+})
+
+test('Duplicate copies timing and volume, not mute or solo; moveItem reorders', () => {
+  const m = { ...blankMember(), soundId: 'a', delayMs: 300, volume: 0.7, muted: true, solo: true }
+  const d = duplicateMember(m, 'Creak copy')
+  assert.notEqual(d.uid, m.uid)
+  assert.deepEqual({ ...d, uid: 0 }, { ...m, uid: 0, name: 'Creak copy', muted: false, solo: false })
+  assert.deepEqual(moveItem([1, 2, 3, 4], 0, 2), [2, 3, 1, 4])
+  assert.deepEqual(moveItem([1, 2, 3, 4], 3, 0), [4, 1, 2, 3])
+  const same = [1, 2]
+  assert.equal(moveItem(same, 1, 1), same)
+  assert.equal(moveItem(same, 0, 5), same)
+})
+
+test('a changed name, mute or solo is a change; the same is not', () => {
+  const m = { ...blankMember(), soundId: 'a' }
+  assert.equal(patchIsNoop(m, { name: 'x' }), false)
+  assert.equal(patchIsNoop(m, { muted: true }), false)
+  assert.equal(patchIsNoop(m, { solo: true }), false)
+  assert.equal(patchIsNoop(m, { name: '', muted: false, solo: false }), true)
 })
 
 test('trim fills nulls from the duration and clamps Out to the file', () => {
