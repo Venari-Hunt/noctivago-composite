@@ -26,6 +26,7 @@ import {
   moveItem,
   nudgeMs,
   patchIsNoop,
+  savePayload,
   previewPlan,
   timelineSec,
   trimStartPatch
@@ -537,22 +538,17 @@ function CompositeApp({ api, ctl }) {
     const mutedCount = members.filter((m) => m.soundId && m.muted).length
     if (usable.length < 2) return setStatus(mutedCount ? 'Choose at least two sounds that are not muted.' : 'Choose at least two sounds.')
     // Make sure every trim is concrete before sending (nulls -> real values).
+    // Muted layers are sent too, flagged `muted: true`, so the saved recipe keeps them.
     const ds = { ...durations }
     await Promise.all(
-      usable.map(async (m) => {
-        const d = await ensureDuration(m.soundId)
-        if (d != null) ds[m.soundId] = d
-      })
+      members
+        .filter((m) => m.soundId)
+        .map(async (m) => {
+          const d = await ensureDuration(m.soundId)
+          if (d != null) ds[m.soundId] = d
+        })
     )
-    const payload = usable.map((m) => ({
-      soundId: m.soundId,
-      // A layer name is saved only when you gave one; older composites have none.
-      ...(m.name.trim() ? { name: m.name.trim() } : {}),
-      delayMs: Math.max(0, Math.round(m.delayMs)),
-      inSec: memberIn(m),
-      outSec: memberOut(m, ds),
-      volume: Math.max(0, Math.min(4, m.volume ?? 1))
-    }))
+    const payload = savePayload(members, ds)
     setBaking(true)
     setStatus(editingId ? 'Remaking the sound…' : 'Making the sound…')
     try {
@@ -562,7 +558,7 @@ function CompositeApp({ api, ctl }) {
       if (result.ok) {
         setStatus(
           `Saved "${trimmed}". Open it in Remix or add it to a mix like any other sound.` +
-            (mutedCount ? ` ${mutedCount === 1 ? 'A muted layer was' : `${mutedCount} muted layers were`} left out.` : '')
+            (mutedCount ? ` ${mutedCount === 1 ? 'A muted layer is' : `${mutedCount} muted layers are`} left out of the sound but kept in the layers.` : '')
         )
         await refresh()
         setEditingId(result.entry.id)

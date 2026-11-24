@@ -7,9 +7,10 @@ import { MIN_CLIP_SEC } from './timeline.js'
 
 let nextUid = 1
 
-// `name` is the layer's own name ('' = use the sound's name). `muted` and `solo`
-// are editing aids and are never saved: a muted layer is simply left out of
-// Preview and Make sound, and solo only changes what Preview plays.
+// `name` is the layer's own name ('' = use the sound's name). A muted layer is
+// left out of Preview and of the baked sound but is saved (`muted: true`) so it
+// comes back muted; `solo` is an editing aid that is never saved and only
+// changes what Preview plays.
 export function blankMember() {
   return { uid: nextUid++, soundId: '', name: '', delayMs: 0, inSec: null, outSec: null, volume: 1, muted: false, solo: false }
 }
@@ -25,9 +26,28 @@ export function memberFromSaved(m) {
     inSec: m.inSec ?? null,
     outSec: m.outSec ?? null,
     volume: m.volume ?? 1,
-    muted: false,
+    muted: m.muted === true,
     solo: false
   }
+}
+
+// What Make sound sends and the app saves: every layer with a sound, in order.
+// A muted layer carries `muted: true` (the app leaves it out of the baked sound
+// but keeps it in the recipe); an unmuted one has no `muted` field, so recipes
+// look the same as before. `durations` fills the trims in (nulls -> real values).
+export function savePayload(members, durations) {
+  return members
+    .filter((m) => m.soundId)
+    .map((m) => ({
+      soundId: m.soundId,
+      // A layer name is saved only when you gave one; older composites have none.
+      ...(m.name.trim() ? { name: m.name.trim() } : {}),
+      delayMs: Math.max(0, Math.round(m.delayMs)),
+      inSec: memberIn(m),
+      outSec: memberOut(m, durations),
+      volume: Math.max(0, Math.min(4, m.volume ?? 1)),
+      ...(m.muted ? { muted: true } : {})
+    }))
 }
 
 // What a layer is called: its own name, else its sound's, else "Empty layer".
