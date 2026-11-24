@@ -19,10 +19,14 @@ import {
   memberFromSaved,
   memberIn,
   memberOut,
+  nudgeMs,
+  patchIsNoop,
   previewPlan,
   timelineSec,
   trimStartPatch
 } from '../domain/members.js'
+import { createHistory } from '../domain/history.js'
+import { KEY_LIST, shortcutAction } from '../domain/keys.js'
 import {
   clampZoom,
   fitZoom,
@@ -64,13 +68,18 @@ function CompositeApp({ api, ctl }) {
   const [viewW, setViewW] = useState(720)
   const [scrollLeft, setScrollLeft] = useState(0)
   const [peaksVersion, setPeaksVersion] = useState(0)
+  const [snapOn, setSnapOn] = useState(true)
+  const [keysOpen, setKeysOpen] = useState(false)
+  const [, setHistTick] = useState(0) // redraws Undo/Redo when the stacks change
+  const hist = useMemo(() => createHistory(), [])
 
   const playhead = useMemo(createPlayheadStore, [])
   const peaks = useRef(new Map()) // "soundId|w|in|out" -> peaks (each entry is a real ffmpeg pass)
+  const shown = useRef(false)
+  const rootRef = useRef(null)
   const lanesRef = useRef(null)
   const rulerRef = useRef(null)
   const pendingScroll = useRef(null) // a scroll position to apply once the new zoom is laid out
-  const shown = useRef(false)
   const dragRef = useRef(null)
   const preview = useRef(null)
   const live = useRef({})
@@ -82,12 +91,47 @@ function CompositeApp({ api, ctl }) {
   const fitPx = fitZoom(Math.max(240, viewW), totalSec)
   const px = frozenPx ?? zoom ?? fitPx
   const innerW = Math.max(Math.round(totalSec * px), viewW)
-  live.current = { members, durations, px, totalSec, contentEnd, viewW }
+  live.current = { members, durations, px, totalSec, contentEnd, viewW, selected, snapOn, keysOpen, hasSounds }
 
   // ---- members ----
   const patchMember = useCallback((uid, fn) => {
     setMembers((ms) => ms.map((m) => (m.uid === uid ? { ...m, ...fn(m) } : m)))
   }, [])
+
+  // ---- undo and redo ----
+  // Every change to the layers calls record() first; it keeps the state from
+  // before (all layers and the selection). A key merges changes that belong
+  // together (a held arrow, a fader drag) into one step.
+  const record = useCallback(
+    (key) => {
+      hist.push({ members: live.current.members, selected: live.current.selected }, key)
+      setHistTick((t) => t + 1)
+    },
+    [hist]
+  )
+
+  // Applies fn(member) as one undoable change; a change that changes nothing is dropped.
+  const edit = useCallback(
+    (uid, fn, key) => {
+      const m = live.current.members.find((x) => x.uid === uid)
+      if (!m) return
+      const patch = fn(m)
+      if (patchIsNoop(m, patch, live.current.durations)) return
+      record(key)
+      patchMember(uid, () => patch)
+    },
+    [record, patchMember]
+  )
+
+  const stepHistory = (dir) => {
+    const cur = { members: live.current.members, selected: live.current.selected }
+    const snap = dir < 0 ? hist.undo(cur) : hist.redo(cur)
+    if (!snap) return
+    stopPreview()
+    setMembers(snap.members)
+    setSelected(Math.min(snap.selected, snap.members.length - 1))
+    setHistTick((t) => t + 1)
+  }
 
   const ensureDuration = useCallback((id) => {
     const known = live.current.durations[id]
@@ -131,6 +175,8 @@ function CompositeApp({ api, ctl }) {
     setMembers([blankMember(), blankMember()])
     setSelected(0)
     playhead.set(0)
+    hist.clear() // a different composite: nothing to go back to
+    setHistTick((t) => t + 1)
   }
 
   const loadExisting = (id) => {
@@ -144,23 +190,27 @@ function CompositeApp({ api, ctl }) {
     setMembers(entry.compositeSource.members.map(memberFromSaved))
     setSelected(0)
     playhead.set(0)
+    hist.clear()
+    setHistTick((t) => t + 1)
     refresh().catch((err) => console.error('Composite: failed to load library', err))
   }
 
   const removeMember = (i) => {
     stopPreview()
+    record()
     setMembers((ms) => ms.filter((_, j) => j !== i))
     setSelected((s) => Math.min(s, Math.max(0, live.current.members.length - 2)))
   }
 
   const addLayer = () => {
+    record()
     setMembers((ms) => [...ms, blankMember()])
     setSelected(live.current.members.length)
   }
 
   const setSound = async (i, soundId) => {
     const uid = live.current.members[i].uid
-    patchMember(uid, () => ({ soundId, inSec: null, outSec: null }))
+    edit(uid, () => ({ soundId, inSec: null, outSec: null }))
     setSelected(i)
     await ensureDuration(soundId)
   }
@@ -168,7 +218,7 @@ function CompositeApp({ api, ctl }) {
   const setVolume = (i, volume) => {
     const m = live.current.members[i]
     const v = Math.max(0, Math.min(VOLUME_MAX, volume))
-    patchMember(m.uid, () => ({ volume: v }))
+    edit(m.uid, () => ({ volume: v }), `volume-${m.uid}`)
     preview.current?.setVolume(m.uid, v)
   }
 
@@ -291,6 +341,10 @@ function CompositeApp({ api, ctl }) {
 
   // ---- drag a clip or one of its trim handles ----
   const onLanesPointerDown = (e) => {
+    // The press is cancelled below (no text selection while dragging), which would
+    // also leave focus in a field; leave it so the keys work on the clip again.
+    const active = document.activeElement
+    if (active?.matches?.('input, select, textarea')) active.blur()
     const laneEl = e.target.closest('.composite-lane')
     if (!laneEl) return
     const i = Number(laneEl.dataset.index)
@@ -320,18 +374,23 @@ function CompositeApp({ api, ctl }) {
       if (!m) return
       const deltaSec = (e.clientX - d.startX) / scale
       const dur = ds[m.soundId] ?? Infinity
+      let patch
       if (d.mode === 'move') {
-        patchMember(d.uid, () => ({ delayMs: snapMs(d.origDelayMs + deltaSec * 1000, e.ctrlKey) }))
+        // Snap is the toolbar toggle; Alt (or Ctrl, the older key) skips it for this drag.
+        patch = { delayMs: snapMs(d.origDelayMs + deltaSec * 1000, !live.current.snapOn || e.altKey || e.ctrlKey) }
       } else if (d.mode === 'in') {
         // Trim the head: move the in-point and shift the clip's start by the
         // same amount so the audio under the pointer stays put (DAW feel).
-        patchMember(d.uid, () =>
-          trimStartPatch({ delayMs: d.origDelayMs, inSec: d.origIn, outSec: d.origOut }, d.origIn + deltaSec)
-        )
+        patch = trimStartPatch({ delayMs: d.origDelayMs, inSec: d.origIn, outSec: d.origOut }, d.origIn + deltaSec)
       } else {
-        const newOut = Math.min(dur, Math.max(d.origOut + deltaSec, d.origIn + MIN_CLIP_SEC))
-        patchMember(d.uid, () => ({ outSec: newOut }))
+        patch = { outSec: Math.min(dur, Math.max(d.origOut + deltaSec, d.origIn + MIN_CLIP_SEC)) }
       }
+      if (patchIsNoop(m, patch, ds)) return
+      if (!d.recorded) {
+        record() // the whole drag is one undo step
+        d.recorded = true
+      }
+      patchMember(d.uid, () => patch)
     }
     const up = () => {
       if (!dragRef.current) return
@@ -344,7 +403,57 @@ function CompositeApp({ api, ctl }) {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
     }
-  }, [patchMember])
+  }, [patchMember, record])
+
+  // ---- keys ----
+  // One listener on the window, in the capture phase so Space reaches Preview
+  // before the app's own Space (Mixer play). It does nothing while the tab is
+  // hidden, while typing in a field, or with a dialog or menu open; the rules
+  // are in domain/keys.js.
+  const onKeyRef = useRef(null)
+  onKeyRef.current = (e) => {
+    // Only while this tab is on screen (a hidden tab panel has no offsetParent).
+    if (!rootRef.current || rootRef.current.offsetParent === null) return
+    const target = e.target
+    const isRange = target?.tagName === 'INPUT' && target.type === 'range'
+    if (isRange && e.key.startsWith('Arrow')) return // the slider's own keys
+    const act = shortcutAction(e, {
+      typing:
+        !isRange && !!target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)),
+      onControl: !!target?.closest?.('button, a, [role="button"]'),
+      modalOpen: !!document.querySelector('.modal:not(.hidden), .context-menu'),
+      hasClip: !!live.current.members[live.current.selected]?.soundId
+    })
+    if (!act) return
+    if (act.id !== 'deselect') e.preventDefault() // Esc stays free for the app's own dialogs
+    if (e.repeat && act.id !== 'nudge') return
+    const { members: ms, selected: sel } = live.current
+    if (act.id === 'undo') stepHistory(-1)
+    else if (act.id === 'redo') stepHistory(1)
+    else if (act.id === 'nudge') edit(ms[sel].uid, (m) => ({ delayMs: nudgeMs(m.delayMs, act.dir, act.big) }), `nudge-${ms[sel].uid}`)
+    else if (act.id === 'delete') removeMember(sel)
+    else if (act.id === 'deselect') {
+      if (live.current.keysOpen) setKeysOpen(false)
+      else setSelected(-1)
+    } else if (act.id === 'snap') setSnapOn((v) => !v)
+    else if (act.id === 'fit') fit()
+    else if (act.id === 'preview' && live.current.hasSounds) togglePreview()
+  }
+  useEffect(() => {
+    const onKey = (e) => onKeyRef.current(e)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
+  // The keys list closes on a click anywhere else.
+  useEffect(() => {
+    if (!keysOpen) return
+    const away = (e) => {
+      if (!e.target.closest('.cp-keys-wrap')) setKeysOpen(false)
+    }
+    window.addEventListener('pointerdown', away)
+    return () => window.removeEventListener('pointerdown', away)
+  }, [keysOpen])
 
   // ---- Make sound ----
   const bake = async () => {
@@ -410,7 +519,7 @@ function CompositeApp({ api, ctl }) {
   const zoomLabel = fmtShown(shownSec(viewW, px))
 
   return (
-    <div className="composite-tab">
+    <div className="composite-tab" ref={rootRef}>
       <section className="cp-pane cp-editor" aria-label="Composite editor">
         {/* Row 1, which composite: pick, start a new one, make the sound. */}
         <div className="cp-head">
@@ -442,14 +551,14 @@ function CompositeApp({ api, ctl }) {
           </button>
         </div>
 
-        {/* Row 2, tools: preview, zoom. */}
+        {/* Row 2, tools: preview, history, snap, zoom, keys. */}
         <div className="cp-tools" role="toolbar" aria-label="Timeline tools">
           <button
             id="composite-preview"
             className={`cp-b ${previewing ? 'cp-on' : 'cp-fill'} cp-preview`}
             type="button"
             aria-pressed={previewing}
-            title="Preview the mix"
+            title="Preview the mix (Space)"
             disabled={!hasSounds}
             onClick={togglePreview}
           >
@@ -457,6 +566,26 @@ function CompositeApp({ api, ctl }) {
             <span>{previewing ? 'Stop' : 'Preview'}</span>
           </button>
           <TimeReadout store={playhead} total={contentEnd} />
+          <span className="cp-sep" />
+          <div className="cp-seg" role="group" aria-label="History">
+            <button id="composite-undo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!hist.canUndo()} onClick={() => stepHistory(-1)}>
+              <Icon name="undo-2" />
+            </button>
+            <button id="composite-redo" type="button" title="Redo (Ctrl+Y)" aria-label="Redo" disabled={!hist.canRedo()} onClick={() => stepHistory(1)}>
+              <Icon name="redo-2" />
+            </button>
+          </div>
+          <button
+            id="composite-snap"
+            className={`cp-b cp-snap ${snapOn ? 'cp-on' : 'cp-fill'}`}
+            type="button"
+            aria-pressed={snapOn}
+            title="Snap to 50 ms (S). Hold Alt while dragging to skip it."
+            onClick={() => setSnapOn((v) => !v)}
+          >
+            <Icon name="magnet" />
+            Snap
+          </button>
           <div className="cp-zoom cp-push" role="group" aria-label="Zoom">
             <button className="cp-ib" type="button" title="Zoom out (Ctrl+wheel)" aria-label="Zoom out" onClick={() => zoomTo(stepZoom(px, -1), viewW / 2)}>
               <Icon name="minus" />
@@ -477,10 +606,41 @@ function CompositeApp({ api, ctl }) {
             </button>
             <span className="cp-zoom-val">{zoomLabel}</span>
           </div>
-          <button id="composite-fit" className="cp-b cp-ghost cp-fit" type="button" title="Show the whole composite" onClick={fit}>
+          <button id="composite-fit" className="cp-b cp-ghost cp-fit" type="button" title="Show the whole composite (F)" onClick={fit}>
             <Icon name="fit" />
             Fit
           </button>
+          <span className="cp-sep" />
+          <div className="cp-keys-wrap">
+            <button
+              id="composite-keys"
+              className="cp-ib"
+              type="button"
+              title="Keyboard shortcuts"
+              aria-label="Keyboard shortcuts"
+              aria-expanded={keysOpen}
+              onClick={() => setKeysOpen((v) => !v)}
+            >
+              <Icon name="keys" />
+            </button>
+            {keysOpen && (
+              <div id="composite-keys-list" className="cp-keys" role="dialog" aria-label="Keyboard shortcuts">
+                <h3>Keyboard shortcuts</h3>
+                <ul>
+                  {KEY_LIST.map((k) => (
+                    <li key={k.what}>
+                      <span>{k.what}</span>
+                      <span className="cp-kbds">
+                        {k.keys.map((key) => (
+                          <kbd key={key}>{key}</kbd>
+                        ))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Row 3, the timeline: layers and their clips. */}
@@ -536,14 +696,14 @@ function CompositeApp({ api, ctl }) {
             m={sel}
             entry={selEntry}
             durations={durations}
-            onStart={(v) => patchMember(sel.uid, () => ({ delayMs: Math.max(0, Math.round(v * 1000)) }))}
+            onStart={(v) => edit(sel.uid, () => ({ delayMs: Math.max(0, Math.round(v * 1000)) }))}
             onIn={(v) =>
-              patchMember(sel.uid, (m) =>
+              edit(sel.uid, (m) =>
                 trimStartPatch({ delayMs: m.delayMs, inSec: memberIn(m), outSec: memberOut(m, durations) }, v)
               )
             }
             onOut={(v, dur) =>
-              patchMember(sel.uid, (m) => ({ outSec: Math.min(Math.max(memberIn(m) + MIN_CLIP_SEC, v), dur) }))
+              edit(sel.uid, (m) => ({ outSec: Math.min(Math.max(memberIn(m) + MIN_CLIP_SEC, v), dur) }))
             }
             onVolume={(v) => setVolume(selected, v)}
             onRemove={() => removeMember(selected)}

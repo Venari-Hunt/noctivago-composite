@@ -88,7 +88,7 @@ export function ClipCard({ m, entry, durations, onStart, onIn, onOut, onVolume, 
         Clip<small>{entry ? entry.name : '(missing)'}</small>
       </h2>
       <div className="cp-grid2">
-        <NumField id="csel-start" {...fieldProps('Starts at')} value={`${(m.delayMs / 1000).toFixed(2)} s`} onCommit={onStart} />
+        <NumField id="csel-start" {...fieldProps('Starts at')} title="Arrow keys nudge 10 ms, Shift+arrow 100 ms" value={`${(m.delayMs / 1000).toFixed(2)} s`} onCommit={onStart} />
         <div className="cp-readout">
           Clip length<b id="csel-length">{fmtSec(memberLen(m, durations))}</b>
         </div>
@@ -107,7 +107,7 @@ export function ClipCard({ m, entry, durations, onStart, onIn, onOut, onVolume, 
         )}
       </div>
       <Slider id="csel-volume" valueId="csel-volume-val" label="Clip volume" volume={m.volume} onChange={onVolume} />
-      <button id="csel-remove" className="cp-b cp-fill cp-wide" type="button" title="Remove this clip" onClick={onRemove}>
+      <button id="csel-remove" className="cp-b cp-fill cp-wide" type="button" title="Remove this clip (Del)" onClick={onRemove}>
         <Icon name="trash-2" />
         Remove clip
       </button>

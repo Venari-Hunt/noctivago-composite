@@ -57,6 +57,25 @@ export function trimStartPatch({ delayMs, inSec, outSec }, wanted) {
   return { inSec: newIn, delayMs: Math.max(0, Math.round(delayMs + (newIn - inSec) * 1000)) }
 }
 
+// A nudge key moves a clip 10 ms (Shift: 100 ms), never before 0.
+export function nudgeMs(delayMs, dir, big) {
+  return Math.max(0, delayMs + dir * (big ? 100 : 10))
+}
+
+// True when applying `patch` to member `m` would change nothing a person can
+// see (a trim of null and a trim at the whole file are the same clip), so it
+// makes no undo step.
+export function patchIsNoop(m, patch, durations = {}) {
+  const next = { ...m, ...patch }
+  return (
+    m.soundId === next.soundId &&
+    m.delayMs === next.delayMs &&
+    m.volume === next.volume &&
+    memberIn(m) === memberIn(next) &&
+    memberOut(m, durations) === memberOut(next, durations)
+  )
+}
+
 // The timeline is a little longer than its content so there is room to drag.
 export function timelineSec(members, durations) {
   return Math.max(4, contentEndSec(members, durations) * 1.05 + 0.5)
