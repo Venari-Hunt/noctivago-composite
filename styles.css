@@ -48,6 +48,21 @@ main:has(> .tab-panel:not(.hidden) .composite-tab) { padding: var(--space-2); ov
 .cp-zoom input { width: 120px; height: 24px; margin: 0; accent-color: var(--accent); }
 .cp-zoom-val { width: 80px; text-align: right; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cp-fit { width: 72px; }
+.cp-snap { width: 88px; }
+.cp-sep { width: 4px; height: 20px; flex: none; background: linear-gradient(var(--border), var(--border)) center / 1px 100% no-repeat; }
+.cp-tools { position: relative; }
+.cp-seg { display: inline-flex; padding: 2px; border-radius: 12px; background: var(--surface); }
+.cp-seg button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--text-dim); display: inline-grid; place-items: center; cursor: pointer; }
+.cp-seg button:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.cp-seg button:disabled { opacity: .38; cursor: not-allowed; }
+.cp-seg button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* The keys list drops under the keys button. */
+.cp-keys { position: absolute; z-index: 5; top: 40px; right: 0; width: 280px; padding: 12px; border-radius: 12px; background: var(--surface-raised); box-shadow: var(--shadow-pop); }
+.cp-keys h3 { margin: 0 0 8px; font-size: 13px; line-height: 20px; font-weight: 700; }
+.cp-keys ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.cp-keys li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; line-height: 20px; color: var(--text-dim); }
+.cp-kbds { display: inline-flex; gap: 4px; flex: none; }
+.cp-keys kbd { display: inline-block; height: 16px; font: 600 11px/16px inherit; font-family: inherit; padding: 0 4px; border-radius: 4px; background: var(--surface-alt); color: var(--text); }
 
 /* Row 3: layer headers (240) | time. */
 .cp-tl { flex: 1; min-height: 120px; display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: 32px minmax(0, 1fr); border-radius: 10px; overflow: hidden; background: var(--surface); }
