@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { snapMs, fmtSec, rulerLabel, rulerStep, parseNum, volumeFill } from '../src/domain/timeline.js'
+import { snapMs, fmtSec, rulerLabel, rulerMarks, parseNum, volumeFill } from '../src/domain/timeline.js'
 import { escapeHtml } from '../src/domain/html.js'
 
 test('snapMs rounds to the 50 ms grid unless snapping is off', () => {
@@ -23,11 +23,18 @@ test('rulerLabel reads like the mock, minutes as m:ss', () => {
   assert.equal(rulerLabel(90), '1:30')
 })
 
-test('rulerStep widens as the timeline grows', () => {
-  assert.equal(rulerStep(4), 0.5)
-  assert.equal(rulerStep(10), 1)
-  assert.equal(rulerStep(40), 5)
-  assert.equal(rulerStep(120), 15)
+test('ruler marks get sparser as you zoom out and denser as you zoom in', () => {
+  const at = (px, total = 10) => rulerMarks(px, total)
+  // 80 px/s: a label every 1 s with small ticks every 0.25 s.
+  const m = at(80)
+  assert.deepEqual(m.filter((x) => x.big).map((x) => x.t), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  assert.equal(m.length, 41)
+  // 800 px/s: a label every 0.1 s.
+  assert.equal(at(800, 1).filter((x) => x.big).length, 11)
+  // 4 px/s: labels 30 s apart, a small tick every 5 s.
+  const far = at(4, 120)
+  assert.deepEqual(far.filter((x) => x.big).map((x) => x.t), [0, 30, 60, 90, 120])
+  assert.equal(far.length, 25)
 })
 
 test('parseNum reads typed fields with units, or gives null', () => {
