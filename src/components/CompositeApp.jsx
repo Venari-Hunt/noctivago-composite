@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Icon } from './icons.jsx'
+import { MakeButton, shortFailure, useMakePhase } from './MakeButton.jsx'
 import { Lanes, LayerHeads, Overview, Ruler, TimeReadout, createPlayheadStore } from './Timeline.jsx'
 import { ClipCard, CompositeCard, LayerCard, NoClipCard } from './Inspector.jsx'
 import { MIN_CLIP_SEC, VOLUME_MAX, fmtSec, snapMs } from '../domain/timeline.js'
@@ -70,7 +71,7 @@ function CompositeApp({ api, ctl }) {
   const [editingId, setEditingId] = useState('')
   const [name, setName] = useState('')
   const [status, setStatus] = useState('')
-  const [baking, setBaking] = useState(false)
+  const make = useMakePhase()
   const [previewing, setPreviewing] = useState(false)
   const [zoom, setZoom] = useState(null) // px per second; null = Fit
   const [frozenPx, setFrozenPx] = useState(null) // Fit holds still during a drag
@@ -549,7 +550,8 @@ function CompositeApp({ api, ctl }) {
         })
     )
     const payload = savePayload(members, ds)
-    setBaking(true)
+    if (make.phase !== 'rest') return
+    make.start(editingId ? 'Remaking sound' : 'Making sound')
     setStatus(editingId ? 'Remaking the sound…' : 'Making the sound…')
     try {
       const result = editingId
@@ -560,16 +562,17 @@ function CompositeApp({ api, ctl }) {
           `Saved "${trimmed}". Open it in Remix or add it to a mix like any other sound.` +
             (mutedCount ? ` ${mutedCount === 1 ? 'A muted layer is' : `${mutedCount} muted layers are`} left out of the sound but kept in the layers.` : '')
         )
+        make.done('Saved to your library')
         await refresh()
         setEditingId(result.entry.id)
       } else {
         setStatus(`Failed: ${result.error}`)
+        make.fail(shortFailure(result.error))
       }
     } catch (err) {
       console.error('Composite bake failed', err)
       setStatus(`Failed: ${err.message}`)
-    } finally {
-      setBaking(false)
+      make.fail(shortFailure(err.message))
     }
   }
 
@@ -613,17 +616,7 @@ function CompositeApp({ api, ctl }) {
             <Icon name="plus" />
             New
           </button>
-          <button
-            id="composite-bake"
-            className="cp-b cp-pri cp-push"
-            type="button"
-            title="Render the layers into one sound in your library"
-            disabled={baking}
-            onClick={bake}
-          >
-            <Icon name="check" />
-            Make sound
-          </button>
+          <MakeButton phase={make.phase} text={make.text} onClick={bake} />
         </div>
 
         {/* Row 2, tools: preview, history, snap, zoom, keys. */}

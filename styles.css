@@ -168,3 +168,19 @@ main:has(> .tab-panel:not(.hidden) .composite-tab) { padding: var(--space-2); ov
   .cp-tl { min-height: 240px; }
   .cp-side { overflow: visible; }
 }
+
+/* Make sound morph (micro-interactions mock): width eases, each state centered, the new state fades in. */
+.cp-b.cp-morph { position: relative; overflow: hidden; padding: 0; transition: width 280ms cubic-bezier(.2, .8, .2, 1), background-color 200ms, color 200ms; }
+.cp-b.cp-morph:disabled { opacity: 1; cursor: default; }
+.cp-morph-row { position: absolute; top: 0; left: 50%; transform: translateX(-50%); height: 100%; display: flex; align-items: center; gap: 8px; padding: 0 12px; white-space: nowrap; transition: opacity 200ms ease-out; }
+.cp-morph-row.in { opacity: 0; }
+.cp-b.cp-morph.working { background: var(--surface-alt); color: var(--text); }
+.cp-b.cp-morph.done { background: var(--done-bg); color: var(--done-ink); }
+.cp-b.cp-morph.fail { background: var(--fail-bg); color: var(--fail-ink); }
+.cp-spin { width: 14px; height: 14px; flex: none; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--surface-hover); border-top-color: var(--accent); animation: cp-spin 700ms linear infinite; }
+@keyframes cp-spin { to { transform: rotate(360deg); } }
+.cp-check { width: 16px; height: 16px; flex: none; }
+.cp-check path { stroke: var(--success-ink); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 20; stroke-dashoffset: 20; animation: cp-draw 360ms 120ms ease-out forwards; }
+@keyframes cp-draw { to { stroke-dashoffset: 0; } }
+.cp-bad { display: inline-flex; color: var(--danger-ink); }
+@media (prefers-reduced-motion: reduce) { .cp-b.cp-morph, .cp-morph-row { transition-duration: 1ms; } .cp-check path { animation: none; stroke-dashoffset: 0; } .cp-spin { animation-duration: 2s; } }
